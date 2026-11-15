@@ -1,5 +1,6 @@
 """Tests for Elder Access Settings, Contacts, and Emergency Directives."""
 
+
 def test_elder_updates_contacts_and_notes(client, sample_profile, db_session, elder_auth_headers):
     """Test updating notification emails and emergency health directives."""
     res = client.post(

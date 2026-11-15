@@ -1,81 +1,118 @@
 """Security utilities: Passcode generation, bcrypt hashing, sessions, and rate limiting."""
 
-import time
+import base64
+import hashlib
+import hmac
+import json
 import secrets
 import string
-import hmac
-import hashlib
-import json
-import base64
-from typing import Optional, Dict, Tuple
+import time
+from typing import Any
+
 import bcrypt
 
-from app.config import settings
+from app.config import (
+    BCRYPT_ROUNDS,
+    CARE_ID_PREFIX,
+    CARE_ID_RANDOM_DIGITS,
+    PASSCODE_RANDOM_DIGITS,
+    PASSCODE_ROLE_PREFIXES,
+    SESSION_TOKEN_EXPIRATION_SECONDS,
+    logger,
+    settings,
+)
 
-
-# ---------------------------------------------------------------------------
-# Passcode & Identifier Generation
-# ---------------------------------------------------------------------------
 
 def generate_care_id() -> str:
-    """Generate a clean, memorable Care Profile ID like CARE-5829."""
-    digits = "".join(secrets.choice(string.digits) for _ in range(4))
-    return f"CARE-{digits}"
+    """Generate a unique and memorable Care Profile ID.
+
+    Returns:
+        str: Formatted Care Profile ID (e.g. 'CARE-5829').
+    """
+    digits = "".join(secrets.choice(string.digits) for _ in range(CARE_ID_RANDOM_DIGITS))
+    return f"{CARE_ID_PREFIX}-{digits}"
 
 
 def generate_passcode(role: str) -> str:
-    """Generate an accessible, easy-to-read passcode prefixed with role.
-    
-    Examples: ELD-7291, CAR-4082, FAM-6315
+    """Generate an accessible, easy-to-read passcode prefixed by role.
+
+    Args:
+        role (str): The target role ('elder', 'caretaker', or 'family').
+
+    Returns:
+        str: Formatted role passcode (e.g. 'ELD-7291', 'CAR-4082', 'FAM-6315').
     """
-    prefix = {
-        "elder": "ELD",
-        "caretaker": "CAR",
-        "family": "FAM",
-    }.get(role.lower(), "KEY")
-    digits = "".join(secrets.choice(string.digits) for _ in range(4))
+    prefix = PASSCODE_ROLE_PREFIXES.get(role.strip().lower(), "KEY")
+    digits = "".join(secrets.choice(string.digits) for _ in range(PASSCODE_RANDOM_DIGITS))
     return f"{prefix}-{digits}"
 
 
-# ---------------------------------------------------------------------------
-# Bcrypt Hashing & Verification
-# ---------------------------------------------------------------------------
-
 def hash_passcode(passcode: str) -> str:
-    """Hash a plaintext passcode using bcrypt."""
+    """Hash a plaintext passcode using bcrypt with configured work factor.
+
+    Args:
+        passcode (str): Plaintext user passcode.
+
+    Returns:
+        str: Salted and hashed bcrypt string.
+    """
     normalized = passcode.strip().upper()
-    salt = bcrypt.gensalt(rounds=12)
+    salt = bcrypt.gensalt(rounds=BCRYPT_ROUNDS)
     hashed = bcrypt.hashpw(normalized.encode("utf-8"), salt)
     return hashed.decode("utf-8")
 
 
 def verify_passcode(plain_passcode: str, hashed_passcode: str) -> bool:
-    """Verify a plaintext passcode against its bcrypt hash."""
+    """Verify a candidate plaintext passcode against an existing bcrypt hash.
+
+    Args:
+        plain_passcode (str): The candidate passcode entered by the user.
+        hashed_passcode (str): The stored bcrypt hash from the database.
+
+    Returns:
+        bool: True if candidate matches hash, False otherwise.
+    """
     if not plain_passcode or not hashed_passcode:
         return False
     normalized = plain_passcode.strip().upper()
     try:
         return bcrypt.checkpw(normalized.encode("utf-8"), hashed_passcode.encode("utf-8"))
-    except Exception:
+    except (ValueError, TypeError, Exception) as err:
+        logger.warning("Passcode verification failed due to invalid hash format: %s", str(err))
         return False
 
 
-# ---------------------------------------------------------------------------
-# Tamper-Proof Session Cookie Tokens (HMAC-SHA256)
-# ---------------------------------------------------------------------------
+def create_session_token(
+    payload: dict[str, Any],
+    expires_in_seconds: int = SESSION_TOKEN_EXPIRATION_SECONDS,
+) -> str:
+    """Create a signed, base64-encoded HMAC-SHA256 session token.
 
-def create_session_token(payload: dict, expires_in_seconds: int = 86400 * 7) -> str:
-    """Create a signed, base64-encoded session token with timestamp."""
+    Args:
+        payload (Dict[str, Any]): Session payload (profile ID, role, etc.).
+        expires_in_seconds (int): Lifetime of token in seconds.
+
+    Returns:
+        str: Signed token in '<data_b64>.<signature_b64>' format.
+    """
     payload_copy = payload.copy()
     payload_copy["exp"] = int(time.time()) + expires_in_seconds
     raw_json = json.dumps(payload_copy, separators=(",", ":"), sort_keys=True).encode("utf-8")
     signature = hmac.new(settings.SECRET_KEY.encode("utf-8"), raw_json, hashlib.sha256).digest()
-    combined = base64.urlsafe_b64encode(raw_json).decode("utf-8") + "." + base64.urlsafe_b64encode(signature).decode("utf-8")
-    return combined
+    data_b64 = base64.urlsafe_b64encode(raw_json).decode("utf-8")
+    sig_b64 = base64.urlsafe_b64encode(signature).decode("utf-8")
+    return f"{data_b64}.{sig_b64}"
 
 
-def decode_session_token(token: str) -> Optional[dict]:
-    """Verify signature and expiration of session token. Returns payload dict or None."""
+def decode_session_token(token: str) -> dict[str, Any] | None:
+    """Verify cryptographic signature and expiration of an HMAC session token.
+
+    Args:
+        token (str): Base64-encoded session token string.
+
+    Returns:
+        Optional[Dict[str, Any]]: Decoded payload if valid, None if invalid or expired.
+    """
     if not token or "." not in token:
         return None
     try:
@@ -85,41 +122,60 @@ def decode_session_token(token: str) -> Optional[dict]:
 
         expected_sig = hmac.new(settings.SECRET_KEY.encode("utf-8"), raw_json, hashlib.sha256).digest()
         if not hmac.compare_digest(signature, expected_sig):
+            logger.debug("Session token signature mismatch")
             return None
 
-        payload = json.loads(raw_json.decode("utf-8"))
+        payload: dict[str, Any] = json.loads(raw_json.decode("utf-8"))
         if payload.get("exp", 0) < time.time():
-            return None  # Expired
+            logger.debug("Session token has expired")
+            return None
         return payload
-    except Exception:
+    except (ValueError, TypeError, json.JSONDecodeError, UnicodeDecodeError) as err:
+        logger.debug("Malformed session token: %s", str(err))
         return None
 
 
-# ---------------------------------------------------------------------------
-# Rate Limiter for Passcode Authentication Attempts
-# ---------------------------------------------------------------------------
-
 class AuthRateLimiter:
-    """In-memory rate limiter to prevent brute-force attacks on passcodes.
-    
-    Tracks failed attempts per (IP, care_id) tuple over a sliding window.
-    """
+    """Sliding-window in-memory rate limiter to prevent brute-force passcode attacks."""
 
-    def __init__(self, max_attempts: int = 5, window_seconds: int = 60):
+    def __init__(
+        self,
+        max_attempts: int = settings.MAX_AUTH_ATTEMPTS,
+        window_seconds: int = settings.AUTH_LOCKOUT_SECONDS,
+    ) -> None:
+        """Initialize the rate limiter.
+
+        Args:
+            max_attempts (int): Maximum allowed failed attempts before lockout.
+            window_seconds (int): Window duration in seconds.
+        """
         self.max_attempts = max_attempts
         self.window_seconds = window_seconds
-        # Key: (ip, care_id) -> list of timestamp floats
-        self._attempts: Dict[Tuple[str, str], list] = {}
+        self._attempts: dict[tuple[str, str], list[float]] = {}
 
-    def _cleanup_old(self, key: Tuple[str, str], now: float):
+    def _cleanup_old(self, key: tuple[str, str], now: float) -> None:
+        """Remove timestamps outside the current sliding window.
+
+        Args:
+            key (Tuple[str, str]): Composite key of (ip, care_id).
+            now (float): Current epoch timestamp.
+        """
         if key in self._attempts:
             cutoff = now - self.window_seconds
             self._attempts[key] = [t for t in self._attempts[key] if t > cutoff]
             if not self._attempts[key]:
                 del self._attempts[key]
 
-    def is_rate_limited(self, ip: str, care_id: str) -> Tuple[bool, int]:
-        """Check if attempts exceeded limit. Returns (is_limited, seconds_remaining)."""
+    def is_rate_limited(self, ip: str, care_id: str) -> tuple[bool, int]:
+        """Check if attempts for an IP and Care ID exceeded the threshold.
+
+        Args:
+            ip (str): Client IP address.
+            care_id (str): Target Care ID.
+
+        Returns:
+            Tuple[bool, int]: (True if locked out, seconds remaining in lockout).
+        """
         now = time.time()
         key = (ip, care_id.strip().upper())
         self._cleanup_old(key, now)
@@ -131,8 +187,13 @@ class AuthRateLimiter:
             return True, max(1, remaining)
         return False, 0
 
-    def record_failure(self, ip: str, care_id: str):
-        """Record a failed attempt."""
+    def record_failure(self, ip: str, care_id: str) -> None:
+        """Record a failed passcode attempt.
+
+        Args:
+            ip (str): Client IP address.
+            care_id (str): Target Care ID.
+        """
         now = time.time()
         key = (ip, care_id.strip().upper())
         self._cleanup_old(key, now)
@@ -140,8 +201,13 @@ class AuthRateLimiter:
             self._attempts[key] = []
         self._attempts[key].append(now)
 
-    def record_success(self, ip: str, care_id: str):
-        """Clear attempts on successful login."""
+    def record_success(self, ip: str, care_id: str) -> None:
+        """Clear recorded failed attempts after successful authentication.
+
+        Args:
+            ip (str): Client IP address.
+            care_id (str): Target Care ID.
+        """
         key = (ip, care_id.strip().upper())
         if key in self._attempts:
             del self._attempts[key]

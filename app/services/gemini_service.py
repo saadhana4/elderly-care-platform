@@ -8,20 +8,18 @@ Includes a clear, prominent medical disclaimer.
 """
 
 import json
-import logging
-from typing import Dict, Any, Optional
-from app.config import settings
+from typing import Any
 
-logger = logging.getLogger(__name__)
+from app.config import logger, settings
 
-DISCLAIMER_TEXT = (
+DISCLAIMER_TEXT: str = (
     "Medical Disclaimer: This information is AI-generated for educational purposes only. "
     "It is not medical advice, diagnosis, or treatment. Always consult your doctor or pharmacist "
     "before making any changes to your medication routine."
 )
 
 # Curated high-accuracy fallbacks for common senior medications when API key is unset or offline
-COMMON_MEDICATIONS_FALLBACK = {
+COMMON_MEDICATIONS_FALLBACK: dict[str, dict[str, str]] = {
     "metformin": {
         "purpose": "Helps lower and balance blood sugar levels by helping your body respond better to insulin.",
         "side_effects": "Mild stomach upset, nausea, loose stools, or metallic taste (especially when first starting).",
@@ -60,10 +58,17 @@ COMMON_MEDICATIONS_FALLBACK = {
 }
 
 
-def _get_fallback_explanation(med_name: str) -> Dict[str, Any]:
-    """Provide a safe, clear explanation template if Gemini is unavailable."""
+def _get_fallback_explanation(med_name: str) -> dict[str, Any]:
+    """Provide a safe, clear explanation template if Gemini is unavailable or offline.
+
+    Args:
+        med_name (str): The medication name.
+
+    Returns:
+        Dict[str, Any]: Dictionary containing purpose, side_effects, precautions, and disclaimer.
+    """
     clean_name = med_name.strip().lower()
-    
+
     # Check if we have an exact or partial match in curated knowledge base
     for key, data in COMMON_MEDICATIONS_FALLBACK.items():
         if key in clean_name:
@@ -77,7 +82,7 @@ def _get_fallback_explanation(med_name: str) -> Dict[str, Any]:
 
     # Universal senior-friendly explanation template
     return {
-        "purpose": f"Prescribed to help manage health symptoms and support recovery as instructed by your doctor.",
+        "purpose": "Prescribed to help manage health symptoms and support recovery as instructed by your doctor.",
         "side_effects": "May include mild drowsiness, dizziness, or stomach sensitivity. Reactions vary for each person.",
         "precautions": "Take with water as directed. Never double up on missed doses. Always check with your pharmacist before taking new supplements.",
         "disclaimer": DISCLAIMER_TEXT,
@@ -85,10 +90,16 @@ def _get_fallback_explanation(med_name: str) -> Dict[str, Any]:
     }
 
 
-def explain_medication(name: str, dosage: str = "", notes: str = "") -> Dict[str, Any]:
-    """Generate a plain-language explanation of a medication using Gemini API.
-    
-    Returns structured JSON with purpose, side effects, precautions, and medical disclaimer.
+def explain_medication(name: str, dosage: str = "", notes: str = "") -> dict[str, Any]:
+    """Generate a plain-language explanation of a medication using Gemini API or curated fallback.
+
+    Args:
+        name (str): Medication name.
+        dosage (str): Prescribed dosage strength.
+        notes (str): Additional doctor notes or directions.
+
+    Returns:
+        Dict[str, Any]: Structured dictionary with purpose, side effects, precautions, and disclaimer.
     """
     if not settings.GEMINI_API_KEY:
         logger.info("GEMINI_API_KEY not set. Using curated healthcare fallback for %s.", name)
@@ -99,8 +110,8 @@ You are an empathetic, clear geriatric healthcare educator speaking directly to 
 Explain the following medication in simple, calm, 6th-grade reading level language:
 
 Medication: {name}
-Dosage: {dosage or 'standard dose'}
-Additional Notes from Doctor: {notes or 'none'}
+Dosage: {dosage or "standard dose"}
+Additional Notes from Doctor: {notes or "none"}
 
 Provide your response in strict JSON format with exactly three fields:
 1. "purpose": 1 to 2 short sentences explaining what this medicine does in daily life words (avoid complex medical jargon).
@@ -116,6 +127,7 @@ Do NOT include markdown backticks or commentary, only raw JSON:
 """
     try:
         from google import genai
+
         client = genai.Client(api_key=settings.GEMINI_API_KEY)
         response = client.models.generate_content(
             model="gemini-2.5-flash",
@@ -123,7 +135,6 @@ Do NOT include markdown backticks or commentary, only raw JSON:
         )
 
         response_text = response.text.strip()
-        # Clean potential markdown fences
         if response_text.startswith("```json"):
             response_text = response_text[7:]
         if response_text.startswith("```"):
@@ -134,12 +145,15 @@ Do NOT include markdown backticks or commentary, only raw JSON:
 
         parsed = json.loads(response_text)
         return {
-            "purpose": parsed.get("purpose", ""),
-            "side_effects": parsed.get("side_effects", ""),
-            "precautions": parsed.get("precautions", ""),
+            "purpose": str(parsed.get("purpose", "")),
+            "side_effects": str(parsed.get("side_effects", "")),
+            "precautions": str(parsed.get("precautions", "")),
             "disclaimer": DISCLAIMER_TEXT,
             "source": "gemini_ai",
         }
-    except Exception as e:
-        logger.warning("Error calling Gemini API for medication explanation: %s. Falling back.", str(e))
+    except (json.JSONDecodeError, KeyError, ImportError) as err:
+        logger.warning("Error parsing Gemini AI response for %s: %s. Using fallback.", name, str(err))
+        return _get_fallback_explanation(name)
+    except Exception as err:
+        logger.warning("Gemini API communication error for %s: %s. Using fallback.", name, str(err))
         return _get_fallback_explanation(name)

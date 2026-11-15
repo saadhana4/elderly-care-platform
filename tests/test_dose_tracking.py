@@ -1,10 +1,13 @@
 """Tests for Daily Dose Tracking (Taken / Skipped) and Adherence Percentage."""
 
 from datetime import date
-from app.models import Medication, DoseLog
+
+from app.models import DoseLog, Medication
 
 
-def test_elder_and_caretaker_can_log_dose(client, sample_profile, db_session, elder_auth_headers, caretaker_auth_headers):
+def test_elder_and_caretaker_can_log_dose(
+    client, sample_profile, db_session, elder_auth_headers, caretaker_auth_headers
+):
     """Test recording a dose as Taken and Skipped."""
     today = date.today()
     med = Medication(
@@ -33,11 +36,15 @@ def test_elder_and_caretaker_can_log_dose(client, sample_profile, db_session, el
     )
     assert res1.status_code == 303
 
-    log1 = db_session.query(DoseLog).filter(
-        DoseLog.profile_id == sample_profile.id,
-        DoseLog.medication_id == med.id,
-        DoseLog.scheduled_time == "08:00",
-    ).first()
+    log1 = (
+        db_session.query(DoseLog)
+        .filter(
+            DoseLog.profile_id == sample_profile.id,
+            DoseLog.medication_id == med.id,
+            DoseLog.scheduled_time == "08:00",
+        )
+        .first()
+    )
     assert log1 is not None
     assert log1.status == "taken"
     assert log1.logged_by_role == "elder"
@@ -56,11 +63,15 @@ def test_elder_and_caretaker_can_log_dose(client, sample_profile, db_session, el
     )
     assert res2.status_code == 303
 
-    log2 = db_session.query(DoseLog).filter(
-        DoseLog.profile_id == sample_profile.id,
-        DoseLog.medication_id == med.id,
-        DoseLog.scheduled_time == "20:00",
-    ).first()
+    log2 = (
+        db_session.query(DoseLog)
+        .filter(
+            DoseLog.profile_id == sample_profile.id,
+            DoseLog.medication_id == med.id,
+            DoseLog.scheduled_time == "20:00",
+        )
+        .first()
+    )
     assert log2 is not None
     assert log2.status == "skipped"
     assert log2.logged_by_role == "caretaker"

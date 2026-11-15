@@ -1,41 +1,56 @@
 """Appointments router for managing doctor visits and healthcare consultations."""
 
 from datetime import datetime
-from typing import Optional
 from pathlib import Path
+from typing import Any
 
-from fastapi import APIRouter, Request, Depends, HTTPException, status, Form
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
-from app.database import get_db
-from app.models import Profile, Appointment
-from app.dependencies import get_current_user, require_editor
 from app.config import settings
+from app.database import get_db
+from app.dependencies import get_current_user, require_editor
+from app.models import Appointment
 
-router = APIRouter()
-templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
+router: APIRouter = APIRouter()
+templates: Jinja2Templates = Jinja2Templates(
+    directory=str(Path(__file__).resolve().parent.parent / "templates")
+)
 
 
 @router.get("/appointments", response_class=HTMLResponse)
 def list_appointments(
     request: Request,
-    current_user=Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db),
-    msg: Optional[str] = None,
-):
-    """List upcoming and past doctor appointments."""
-    profile_id = current_user["profile_id"]
-    now = datetime.now()
+    msg: str | None = None,
+) -> HTMLResponse:
+    """List upcoming and past doctor appointments.
 
-    all_appts = db.query(Appointment).filter(
-        Appointment.profile_id == profile_id
-    ).order_by(Appointment.appointment_date.asc()).all()
+    Args:
+        request (Request): The incoming HTTP request.
+        current_user (Dict[str, Any]): Active authenticated user session.
+        db (Session): Database session.
+        msg (Optional[str]): Flash feedback message.
 
-    upcoming_appts = [a for a in all_appts if a.appointment_date >= now]
-    past_appts = [a for a in all_appts if a.appointment_date < now]
-    past_appts.reverse()  # Most recent past first
+    Returns:
+        HTMLResponse: Rendered appointments.html.
+    """
+    profile_id: int = current_user["profile_id"]
+    now: datetime = datetime.now()
+
+    all_appts: list[Appointment] = (
+        db.query(Appointment)
+        .filter(Appointment.profile_id == profile_id)
+        .order_by(Appointment.appointment_date.asc())
+        .all()
+    )
+
+    upcoming_appts: list[Appointment] = [a for a in all_appts if a.appointment_date >= now]
+    past_appts: list[Appointment] = [a for a in all_appts if a.appointment_date < now]
+    past_appts.reverse()
 
     return templates.TemplateResponse(
         request=request,
@@ -53,11 +68,20 @@ def list_appointments(
 @router.get("/appointments/new", response_class=HTMLResponse)
 def new_appointment_page(
     request: Request,
-    current_user=Depends(require_editor),
-    error: Optional[str] = None,
-):
-    """Render form to schedule a new doctor appointment."""
-    default_datetime = datetime.now().strftime("%Y-%m-%dT%H:00")
+    current_user: dict[str, Any] = Depends(require_editor),
+    error: str | None = None,
+) -> HTMLResponse:
+    """Render form to schedule a new doctor appointment.
+
+    Args:
+        request (Request): The incoming HTTP request.
+        current_user (Dict[str, Any]): Authenticated editor session.
+        error (Optional[str]): Error message if previous submission failed.
+
+    Returns:
+        HTMLResponse: Rendered appointment_form.html.
+    """
+    default_datetime: str = datetime.now().strftime("%Y-%m-%dT%H:00")
     return templates.TemplateResponse(
         request=request,
         name="appointment_form.html",
@@ -77,18 +101,34 @@ def create_appointment(
     request: Request,
     doctor_name: str = Form(...),
     appointment_date: str = Form(...),
-    location: Optional[str] = Form(None),
-    notes: Optional[str] = Form(None),
-    current_user=Depends(require_editor),
+    location: str | None = Form(None),
+    notes: str | None = Form(None),
+    current_user: dict[str, Any] = Depends(require_editor),
     db: Session = Depends(get_db),
-):
-    """Create a new doctor appointment."""
-    profile_id = current_user["profile_id"]
-    clean_doctor = doctor_name.strip()
+) -> RedirectResponse:
+    """Create a new doctor appointment.
+
+    Args:
+        request (Request): The incoming HTTP request.
+        doctor_name (str): Doctor or clinic title.
+        appointment_date (str): ISO formatted datetime string.
+        location (Optional[str]): Physical clinic address or room.
+        notes (Optional[str]): Preparation instructions.
+        current_user (Dict[str, Any]): Authenticated editor session.
+        db (Session): Database session.
+
+    Returns:
+        RedirectResponse: 303 Redirect to /appointments with status message.
+
+    Raises:
+        HTTPException: 400 if appointment date cannot be parsed.
+    """
+    profile_id: int = current_user["profile_id"]
+    clean_doctor: str = doctor_name.strip()
 
     try:
-        parsed_dt = datetime.fromisoformat(appointment_date.strip())
-    except Exception:
+        parsed_dt: datetime = datetime.fromisoformat(appointment_date.strip())
+    except (ValueError, TypeError):
         raise HTTPException(status_code=400, detail="Invalid appointment date format.")
 
     new_appt = Appointment(
@@ -112,20 +152,38 @@ def create_appointment(
 def edit_appointment_page(
     appt_id: int,
     request: Request,
-    current_user=Depends(require_editor),
+    current_user: dict[str, Any] = Depends(require_editor),
     db: Session = Depends(get_db),
-    error: Optional[str] = None,
-):
-    """Render form to edit an existing appointment."""
-    profile_id = current_user["profile_id"]
-    appt = db.query(Appointment).filter(
-        Appointment.id == appt_id,
-        Appointment.profile_id == profile_id,
-    ).first()
+    error: str | None = None,
+) -> HTMLResponse:
+    """Render form to edit an existing appointment.
+
+    Args:
+        appt_id (int): Appointment database ID.
+        request (Request): The incoming HTTP request.
+        current_user (Dict[str, Any]): Authenticated editor session.
+        db (Session): Database session.
+        error (Optional[str]): Error message if previous update failed.
+
+    Returns:
+        HTMLResponse: Rendered appointment_form.html.
+
+    Raises:
+        HTTPException: 404 if appointment not found.
+    """
+    profile_id: int = current_user["profile_id"]
+    appt: Appointment | None = (
+        db.query(Appointment)
+        .filter(
+            Appointment.id == appt_id,
+            Appointment.profile_id == profile_id,
+        )
+        .first()
+    )
     if not appt:
         raise HTTPException(status_code=404, detail="Appointment not found")
 
-    formatted_dt = appt.appointment_date.strftime("%Y-%m-%dT%H:%M")
+    formatted_dt: str = appt.appointment_date.strftime("%Y-%m-%dT%H:%M")
     return templates.TemplateResponse(
         request=request,
         name="appointment_form.html",
@@ -146,23 +204,44 @@ def update_appointment(
     request: Request,
     doctor_name: str = Form(...),
     appointment_date: str = Form(...),
-    location: Optional[str] = Form(None),
-    notes: Optional[str] = Form(None),
-    current_user=Depends(require_editor),
+    location: str | None = Form(None),
+    notes: str | None = Form(None),
+    current_user: dict[str, Any] = Depends(require_editor),
     db: Session = Depends(get_db),
-):
-    """Update appointment details."""
-    profile_id = current_user["profile_id"]
-    appt = db.query(Appointment).filter(
-        Appointment.id == appt_id,
-        Appointment.profile_id == profile_id,
-    ).first()
+) -> RedirectResponse:
+    """Update appointment details.
+
+    Args:
+        appt_id (int): Appointment database ID.
+        request (Request): The incoming HTTP request.
+        doctor_name (str): Doctor or clinic title.
+        appointment_date (str): ISO formatted datetime string.
+        location (Optional[str]): Clinic location.
+        notes (Optional[str]): Notes.
+        current_user (Dict[str, Any]): Authenticated editor session.
+        db (Session): Database session.
+
+    Returns:
+        RedirectResponse: 303 Redirect to /appointments with status message.
+
+    Raises:
+        HTTPException: 400 for bad date format, 404 if appointment not found.
+    """
+    profile_id: int = current_user["profile_id"]
+    appt: Appointment | None = (
+        db.query(Appointment)
+        .filter(
+            Appointment.id == appt_id,
+            Appointment.profile_id == profile_id,
+        )
+        .first()
+    )
     if not appt:
         raise HTTPException(status_code=404, detail="Appointment not found")
 
     try:
-        parsed_dt = datetime.fromisoformat(appointment_date.strip())
-    except Exception:
+        parsed_dt: datetime = datetime.fromisoformat(appointment_date.strip())
+    except (ValueError, TypeError):
         raise HTTPException(status_code=400, detail="Invalid appointment date format.")
 
     appt.doctor_name = doctor_name.strip()
@@ -181,19 +260,36 @@ def update_appointment(
 def delete_appointment(
     appt_id: int,
     request: Request,
-    current_user=Depends(require_editor),
+    current_user: dict[str, Any] = Depends(require_editor),
     db: Session = Depends(get_db),
-):
-    """Delete an appointment."""
-    profile_id = current_user["profile_id"]
-    appt = db.query(Appointment).filter(
-        Appointment.id == appt_id,
-        Appointment.profile_id == profile_id,
-    ).first()
+) -> RedirectResponse:
+    """Delete an appointment.
+
+    Args:
+        appt_id (int): Appointment database ID.
+        request (Request): The incoming HTTP request.
+        current_user (Dict[str, Any]): Authenticated editor session.
+        db (Session): Database session.
+
+    Returns:
+        RedirectResponse: 303 Redirect to /appointments with status message.
+
+    Raises:
+        HTTPException: 404 if appointment not found.
+    """
+    profile_id: int = current_user["profile_id"]
+    appt: Appointment | None = (
+        db.query(Appointment)
+        .filter(
+            Appointment.id == appt_id,
+            Appointment.profile_id == profile_id,
+        )
+        .first()
+    )
     if not appt:
         raise HTTPException(status_code=404, detail="Appointment not found")
 
-    doc_name = appt.doctor_name
+    doc_name: str = appt.doctor_name
     db.delete(appt)
     db.commit()
 

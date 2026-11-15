@@ -1,27 +1,34 @@
 """SQLAlchemy Data Models for CareNest."""
 
-from datetime import datetime, date, timezone
+from datetime import UTC, date, datetime
+
 from sqlalchemy import (
+    Boolean,
     Column,
+    Date,
+    DateTime,
+    ForeignKey,
     Integer,
     String,
     Text,
-    Boolean,
-    DateTime,
-    Date,
-    ForeignKey,
 )
 from sqlalchemy.orm import relationship
+
 from app.database import Base
 
 
-def utc_now():
-    """Return current UTC datetime."""
-    return datetime.now(timezone.utc)
+def utc_now() -> datetime:
+    """Return current timezone-aware UTC datetime.
+
+    Returns:
+        datetime: Current UTC datetime with timezone.utc.
+    """
+    return datetime.now(UTC)
 
 
 class Profile(Base):
     """Healthcare Profile for an Elderly Person."""
+
     __tablename__ = "profiles"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -55,6 +62,7 @@ class Profile(Base):
 
 class Medication(Base):
     """Medication schedule and prescription details."""
+
     __tablename__ = "medications"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -62,7 +70,9 @@ class Medication(Base):
     name = Column(String(120), nullable=False)
     dosage = Column(String(80), nullable=False)
     times_per_day = Column(Integer, nullable=False, default=1)
-    schedule_times = Column(String(100), nullable=False, default="08:00")  # Comma separated e.g. "08:00, 20:00"
+    schedule_times = Column(
+        String(100), nullable=False, default="08:00"
+    )  # Comma separated e.g. "08:00, 20:00"
     start_date = Column(Date, nullable=False, default=date.today)
     end_date = Column(Date, nullable=True)
     notes = Column(Text, nullable=True)
@@ -79,6 +89,7 @@ class Medication(Base):
 
 class DoseLog(Base):
     """Record of logged medication doses (Taken or Skipped)."""
+
     __tablename__ = "dose_logs"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -98,6 +109,7 @@ class DoseLog(Base):
 
 class Appointment(Base):
     """Medical appointments and clinic visits."""
+
     __tablename__ = "appointments"
 
     id = Column(Integer, primary_key=True, index=True)

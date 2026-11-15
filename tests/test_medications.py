@@ -2,11 +2,14 @@
 
 import json
 from datetime import date
+
 from app.models import Medication
 from app.services.gemini_service import explain_medication
 
 
-def test_elder_and_caretaker_can_add_medication(client, sample_profile, db_session, elder_auth_headers, caretaker_auth_headers):
+def test_elder_and_caretaker_can_add_medication(
+    client, sample_profile, db_session, elder_auth_headers, caretaker_auth_headers
+):
     """Test that Elder and Caretaker can create medications."""
     # 1. Elder adds Metformin
     res1 = client.post(

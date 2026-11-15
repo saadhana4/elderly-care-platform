@@ -1,8 +1,9 @@
 """Tests for Automated Email Reminders and Cloud Scheduler Trigger."""
 
-from datetime import datetime, date, timedelta
+from datetime import date, datetime, timedelta
+
 from app.config import settings
-from app.models import Medication, Appointment
+from app.models import Appointment, Medication
 from app.services.reminder_service import process_all_reminders
 
 
@@ -69,7 +70,7 @@ def test_reminder_logic_detects_missed_doses_and_appointments(db_session, sample
     report = process_all_reminders(db_session)
     assert report["profiles_checked"] >= 1
     assert report["total_alerts_found"] >= 2  # At least 1 missed dose + 1 upcoming appointment
-    
+
     # Check details
     profile_result = next((r for r in report["details"] if r["care_id"] == sample_profile.care_id), None)
     assert profile_result is not None

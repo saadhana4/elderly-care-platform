@@ -1,38 +1,50 @@
 """Authentication and profile onboarding router."""
 
-from fastapi import APIRouter, Request, Depends, HTTPException, status, Form
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from pathlib import Path
+from typing import Any
+
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
-from pathlib import Path
-from typing import Optional
 
+from app.config import SESSION_COOKIE_NAME, SESSION_TOKEN_EXPIRATION_SECONDS, settings
 from app.database import get_db
-from app.models import Profile
-from app.config import settings
-from app.schemas import ProfileCreate, LoginRequest
+from app.dependencies import get_current_user_optional
+from app.schemas import LoginRequest, ProfileCreate
 from app.security import (
-    generate_care_id,
-    generate_passcode,
-    hash_passcode,
-    verify_passcode,
-    create_session_token,
     auth_rate_limiter,
+    create_session_token,
 )
-from app.dependencies import SESSION_COOKIE_NAME, get_current_user_optional
+from app.services.profile_service import (
+    authenticate_passcode,
+    create_care_profile,
+)
 
-router = APIRouter()
-templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
+router: APIRouter = APIRouter()
+templates: Jinja2Templates = Jinja2Templates(
+    directory=str(Path(__file__).resolve().parent.parent / "templates")
+)
 
 
 @router.get("/login", response_class=HTMLResponse)
 def login_page(
     request: Request,
-    error: Optional[str] = None,
-    success: Optional[str] = None,
-    current_user=Depends(get_current_user_optional),
-):
-    """Render the login page."""
+    error: str | None = None,
+    success: str | None = None,
+    current_user: dict[str, Any] | None = Depends(get_current_user_optional),
+) -> Response:
+    """Render the login page or redirect authenticated users to /today.
+
+    Args:
+        request (Request): The incoming HTTP request.
+        error (str | None): Error message if login failed.
+        success (str | None): Success notice if logged out or registered.
+        current_user (dict[str, Any] | None): Existing user session if active.
+
+    Returns:
+        Response: Redirect or rendered login.html.
+    """
     if current_user:
         return RedirectResponse(url="/today", status_code=status.HTTP_302_FOUND)
 
@@ -47,19 +59,27 @@ def login_page(
     )
 
 
-@router.post("/login")
+@router.post("/login", response_class=HTMLResponse)
 def login_submit(
     request: Request,
     care_id: str = Form(...),
     passcode: str = Form(...),
     db: Session = Depends(get_db),
-):
-    """Process passcode-based authentication for elder, caretaker, or family."""
-    client_ip = request.client.host if request.client else "127.0.0.1"
-    clean_care_id = care_id.strip().upper()
-    clean_passcode = passcode.strip().upper()
+) -> Response:
+    """Process passcode-based authentication for elder, caretaker, or family.
 
-    # 1. Rate Limiting Check
+    Args:
+        request (Request): The incoming HTTP request.
+        care_id (str): Care Profile ID entered by user.
+        passcode (str): Role passcode entered by user.
+        db (Session): Database session.
+
+    Returns:
+        Response: Redirect to /today on success or re-rendered login.html.
+    """
+    client_ip: str = request.client.host if request.client else "127.0.0.1"
+    clean_care_id: str = care_id.strip().upper()
+
     is_limited, retry_after = auth_rate_limiter.is_rate_limited(client_ip, clean_care_id)
     if is_limited:
         return templates.TemplateResponse(
@@ -73,73 +93,32 @@ def login_submit(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
         )
 
-    # 2. Lookup Profile
-    profile = db.query(Profile).filter(Profile.care_id == clean_care_id).first()
-    if not profile:
+    profile, role, error_msg = authenticate_passcode(db, clean_care_id, passcode)
+    if error_msg:
         auth_rate_limiter.record_failure(client_ip, clean_care_id)
+        status_code = (
+            status.HTTP_403_FORBIDDEN if "paused or revoked" in error_msg else status.HTTP_401_UNAUTHORIZED
+        )
         return templates.TemplateResponse(
             request=request,
             name="login.html",
             context={
-                "error": "Invalid Care ID or Passcode. Please verify your credentials.",
+                "error": error_msg,
                 "care_id": clean_care_id,
                 "app_name": settings.APP_NAME,
             },
-            status_code=status.HTTP_401_UNAUTHORIZED,
+            status_code=status_code,
         )
 
-    # 3. Check passcodes across roles
-    matched_role = None
-    if verify_passcode(clean_passcode, profile.elder_passcode_hash):
-        matched_role = "elder"
-    elif verify_passcode(clean_passcode, profile.caretaker_passcode_hash):
-        if not profile.caretaker_access_enabled:
-            return templates.TemplateResponse(
-                request=request,
-                name="login.html",
-                context={
-                    "error": "Caretaker access has been paused or revoked by the primary elder account.",
-                    "care_id": clean_care_id,
-                    "app_name": settings.APP_NAME,
-                },
-                status_code=status.HTTP_403_FORBIDDEN,
-            )
-        matched_role = "caretaker"
-    elif verify_passcode(clean_passcode, profile.family_passcode_hash):
-        if not profile.family_access_enabled:
-            return templates.TemplateResponse(
-                request=request,
-                name="login.html",
-                context={
-                    "error": "Family view access has been paused or revoked by the primary elder account.",
-                    "care_id": clean_care_id,
-                    "app_name": settings.APP_NAME,
-                },
-                status_code=status.HTTP_403_FORBIDDEN,
-            )
-        matched_role = "family"
-
-    if not matched_role:
-        auth_rate_limiter.record_failure(client_ip, clean_care_id)
-        return templates.TemplateResponse(
-            request=request,
-            name="login.html",
-            context={
-                "error": "Invalid Passcode. Please check the code provided for your role.",
-                "care_id": clean_care_id,
-                "app_name": settings.APP_NAME,
-            },
-            status_code=status.HTTP_401_UNAUTHORIZED,
-        )
-
-    # 4. Successful login: Clear rate limiter & generate session token
     auth_rate_limiter.record_success(client_ip, clean_care_id)
-    session_token = create_session_token({
-        "profile_id": profile.id,
-        "care_id": profile.care_id,
-        "elder_name": profile.elder_name,
-        "role": matched_role,
-    })
+    session_token = create_session_token(
+        {
+            "profile_id": profile.id,
+            "care_id": profile.care_id,
+            "elder_name": profile.elder_name,
+            "role": role,
+        }
+    )
 
     response = RedirectResponse(url="/today", status_code=status.HTTP_303_SEE_OTHER)
     response.set_cookie(
@@ -148,14 +127,25 @@ def login_submit(
         httponly=True,
         samesite="lax",
         secure=settings.ENVIRONMENT == "production",
-        max_age=86400 * 7,
+        max_age=SESSION_TOKEN_EXPIRATION_SECONDS,
     )
     return response
 
 
 @router.get("/create-profile", response_class=HTMLResponse)
-def create_profile_page(request: Request, error: Optional[str] = None):
-    """Render the profile registration form."""
+def create_profile_page(
+    request: Request,
+    error: str | None = None,
+) -> Response:
+    """Render the profile registration form.
+
+    Args:
+        request (Request): The incoming HTTP request.
+        error (str | None): Error message if previous submission failed.
+
+    Returns:
+        Response: Rendered create_profile.html.
+    """
     return templates.TemplateResponse(
         request=request,
         name="create_profile.html",
@@ -166,19 +156,33 @@ def create_profile_page(request: Request, error: Optional[str] = None):
     )
 
 
-@router.post("/create-profile")
+@router.post("/create-profile", response_class=HTMLResponse)
 def create_profile_submit(
     request: Request,
     elder_name: str = Form(...),
-    elder_age: Optional[int] = Form(None),
-    emergency_notes: Optional[str] = Form(None),
-    elder_email: Optional[str] = Form(None),
-    caretaker_email: Optional[str] = Form(None),
-    family_email: Optional[str] = Form(None),
+    elder_age: int | None = Form(None),
+    emergency_notes: str | None = Form(None),
+    elder_email: str | None = Form(None),
+    caretaker_email: str | None = Form(None),
+    family_email: str | None = Form(None),
     db: Session = Depends(get_db),
-):
-    """Create a new profile and generate 3 role passcodes."""
-    clean_name = elder_name.strip()
+) -> Response:
+    """Create a new care profile and display the 3 generated role passcodes.
+
+    Args:
+        request (Request): The incoming HTTP request.
+        elder_name (str): Full name of the elderly individual.
+        elder_age (int | None): Age of the senior.
+        emergency_notes (str | None): Emergency directives or allergies.
+        elder_email (str | None): Elder's contact email.
+        caretaker_email (str | None): Caretaker's contact email.
+        family_email (str | None): Family contact email.
+        db (Session): Database session.
+
+    Returns:
+        Response: Rendered passcodes_created.html with plain passcodes.
+    """
+    clean_name: str = elder_name.strip()
     if len(clean_name) < 2:
         return templates.TemplateResponse(
             request=request,
@@ -190,51 +194,40 @@ def create_profile_submit(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         )
 
-    care_id = generate_care_id()
-    # Ensure care_id is unique
-    while db.query(Profile).filter(Profile.care_id == care_id).first():
-        care_id = generate_care_id()
-
-    elder_code = generate_passcode("elder")
-    caretaker_code = generate_passcode("caretaker")
-    family_code = generate_passcode("family")
-
-    profile = Profile(
-        care_id=care_id,
+    profile, passcodes = create_care_profile(
+        db=db,
         elder_name=clean_name,
-        elder_age=elder_age if (elder_age and elder_age > 0) else None,
-        emergency_notes=emergency_notes.strip() if emergency_notes else None,
-        elder_passcode_hash=hash_passcode(elder_code),
-        caretaker_passcode_hash=hash_passcode(caretaker_code),
-        family_passcode_hash=hash_passcode(family_code),
-        caretaker_access_enabled=True,
-        family_access_enabled=True,
-        elder_email=elder_email.strip() if elder_email else None,
-        caretaker_email=caretaker_email.strip() if caretaker_email else None,
-        family_email=family_email.strip() if family_email else None,
+        elder_age=elder_age,
+        emergency_notes=emergency_notes,
+        elder_email=elder_email,
+        caretaker_email=caretaker_email,
+        family_email=family_email,
     )
-    db.add(profile)
-    db.commit()
-    db.refresh(profile)
 
-    # Render passcodes page (displayed once with prominent warnings to write down)
     return templates.TemplateResponse(
         request=request,
         name="passcodes_created.html",
         context={
             "profile": profile,
-            "elder_code": elder_code,
-            "caretaker_code": caretaker_code,
-            "family_code": family_code,
+            "elder_code": passcodes["elder"],
+            "caretaker_code": passcodes["caretaker"],
+            "family_code": passcodes["family"],
             "app_name": settings.APP_NAME,
         },
     )
 
 
 @router.get("/logout")
-def logout():
-    """Clear session cookie and redirect to login."""
-    response = RedirectResponse(url="/login?success=You+have+been+signed+out+safely", status_code=status.HTTP_302_FOUND)
+def logout() -> RedirectResponse:
+    """Clear session cookie and redirect to login page.
+
+    Returns:
+        RedirectResponse: 302 Redirect to /login.
+    """
+    response: RedirectResponse = RedirectResponse(
+        url="/login?success=You+have+been+signed+out+safely",
+        status_code=status.HTTP_302_FOUND,
+    )
     response.delete_cookie(key=SESSION_COOKIE_NAME)
     return response
 
@@ -243,53 +236,60 @@ def logout():
 # Programmatic JSON API Endpoints
 # ---------------------------------------------------------------------------
 
+
 @router.post("/api/profiles", response_model=dict, status_code=status.HTTP_201_CREATED)
-def api_create_profile(payload: ProfileCreate, db: Session = Depends(get_db)):
-    """API endpoint to create profile and return the 3 generated role passcodes."""
-    care_id = generate_care_id()
-    while db.query(Profile).filter(Profile.care_id == care_id).first():
-        care_id = generate_care_id()
+def api_create_profile(
+    payload: ProfileCreate,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """API endpoint to create a care profile and return the 3 generated role passcodes.
 
-    elder_code = generate_passcode("elder")
-    caretaker_code = generate_passcode("caretaker")
-    family_code = generate_passcode("family")
+    Args:
+        payload (ProfileCreate): Validated request payload.
+        db (Session): Database session.
 
-    profile = Profile(
-        care_id=care_id,
+    Returns:
+        dict[str, Any]: Profile metadata and initial plain passcodes.
+    """
+    profile, passcodes = create_care_profile(
+        db=db,
         elder_name=payload.elder_name,
         elder_age=payload.elder_age,
         emergency_notes=payload.emergency_notes,
-        elder_passcode_hash=hash_passcode(elder_code),
-        caretaker_passcode_hash=hash_passcode(caretaker_code),
-        family_passcode_hash=hash_passcode(family_code),
-        caretaker_access_enabled=True,
-        family_access_enabled=True,
         elder_email=payload.elder_email,
         caretaker_email=payload.caretaker_email,
         family_email=payload.family_email,
     )
-    db.add(profile)
-    db.commit()
-    db.refresh(profile)
 
     return {
         "id": profile.id,
         "care_id": profile.care_id,
         "elder_name": profile.elder_name,
-        "passcodes": {
-            "elder": elder_code,
-            "caretaker": caretaker_code,
-            "family": family_code,
-        },
+        "passcodes": passcodes,
     }
 
 
 @router.post("/api/login")
-def api_login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)):
-    """API endpoint to login with care_id and passcode."""
-    client_ip = request.client.host if request.client else "127.0.0.1"
-    clean_care_id = payload.care_id.strip().upper()
-    clean_passcode = payload.passcode.strip().upper()
+def api_login(
+    payload: LoginRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """API endpoint to authenticate with Care ID and role passcode.
+
+    Args:
+        payload (LoginRequest): Input credentials.
+        request (Request): Incoming HTTP request.
+        db (Session): Database session.
+
+    Returns:
+        dict[str, Any]: Bearer access token and profile role details.
+
+    Raises:
+        HTTPException: 429 if rate-limited, 403 if role disabled, 401 if invalid.
+    """
+    client_ip: str = request.client.host if request.client else "127.0.0.1"
+    clean_care_id: str = payload.care_id.strip().upper()
 
     is_limited, retry_after = auth_rate_limiter.is_rate_limited(client_ip, clean_care_id)
     if is_limited:
@@ -298,39 +298,28 @@ def api_login(payload: LoginRequest, request: Request, db: Session = Depends(get
             detail=f"Rate limit exceeded. Please wait {retry_after} seconds.",
         )
 
-    profile = db.query(Profile).filter(Profile.care_id == clean_care_id).first()
-    if not profile:
+    profile, role, error_msg = authenticate_passcode(db, clean_care_id, payload.passcode)
+    if error_msg:
         auth_rate_limiter.record_failure(client_ip, clean_care_id)
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials.")
-
-    matched_role = None
-    if verify_passcode(clean_passcode, profile.elder_passcode_hash):
-        matched_role = "elder"
-    elif verify_passcode(clean_passcode, profile.caretaker_passcode_hash):
-        if not profile.caretaker_access_enabled:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Caretaker access is disabled.")
-        matched_role = "caretaker"
-    elif verify_passcode(clean_passcode, profile.family_passcode_hash):
-        if not profile.family_access_enabled:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Family access is disabled.")
-        matched_role = "family"
-
-    if not matched_role:
-        auth_rate_limiter.record_failure(client_ip, clean_care_id)
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid passcode.")
+        if "paused or revoked" in error_msg:
+            detail_msg = f"{role.capitalize() if role else 'Role'} access is disabled."
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail_msg)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=error_msg)
 
     auth_rate_limiter.record_success(client_ip, clean_care_id)
-    token = create_session_token({
-        "profile_id": profile.id,
-        "care_id": profile.care_id,
-        "elder_name": profile.elder_name,
-        "role": matched_role,
-    })
+    token = create_session_token(
+        {
+            "profile_id": profile.id,
+            "care_id": profile.care_id,
+            "elder_name": profile.elder_name,
+            "role": role,
+        }
+    )
 
     return {
         "access_token": token,
         "token_type": "bearer",
-        "role": matched_role,
+        "role": role,
         "care_id": profile.care_id,
         "elder_name": profile.elder_name,
     }

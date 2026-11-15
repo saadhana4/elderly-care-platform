@@ -1,0 +1,36 @@
+[project]
+name = "carenest"
+version = "1.0.0"
+description = "Elderly Care & Medication Management Platform"
+authors = [{ name = "CareNest Team" }]
+requires-python = ">=3.10"
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+exclude = [
+    ".git",
+    ".pytest_cache",
+    "__pycache__",
+    "venv",
+    ".venv",
+    "build",
+    "dist",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501", # line-too-long handled by formatter
+    "UP007", # keep Optional/Union compatibility where helpful
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

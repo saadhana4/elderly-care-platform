@@ -1,17 +1,17 @@
 """Pydantic schemas for data validation and API request/response contracts."""
 
 from datetime import date, datetime
-from typing import Optional, List
-from pydantic import BaseModel, Field, EmailStr, ConfigDict, field_validator
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ProfileCreate(BaseModel):
     elder_name: str = Field(..., min_length=2, max_length=100)
-    elder_age: Optional[int] = Field(None, ge=1, le=130)
-    emergency_notes: Optional[str] = Field(None, max_length=1000)
-    elder_email: Optional[str] = Field(None, max_length=120)
-    caretaker_email: Optional[str] = Field(None, max_length=120)
-    family_email: Optional[str] = Field(None, max_length=120)
+    elder_age: int | None = Field(None, ge=1, le=130)
+    emergency_notes: str | None = Field(None, max_length=1000)
+    elder_email: str | None = Field(None, max_length=120)
+    caretaker_email: str | None = Field(None, max_length=120)
+    family_email: str | None = Field(None, max_length=120)
 
 
 class ProfileResponse(BaseModel):
@@ -20,13 +20,13 @@ class ProfileResponse(BaseModel):
     id: int
     care_id: str
     elder_name: str
-    elder_age: Optional[int] = None
-    emergency_notes: Optional[str] = None
+    elder_age: int | None = None
+    emergency_notes: str | None = None
     caretaker_access_enabled: bool
     family_access_enabled: bool
-    elder_email: Optional[str] = None
-    caretaker_email: Optional[str] = None
-    family_email: Optional[str] = None
+    elder_email: str | None = None
+    caretaker_email: str | None = None
+    family_email: str | None = None
 
 
 class LoginRequest(BaseModel):
@@ -40,8 +40,8 @@ class MedicationBase(BaseModel):
     times_per_day: int = Field(1, ge=1, le=10)
     schedule_times: str = Field(..., description="Comma separated HH:MM strings e.g. 08:00, 20:00")
     start_date: date
-    end_date: Optional[date] = None
-    notes: Optional[str] = Field(None, max_length=500)
+    end_date: date | None = None
+    notes: str | None = Field(None, max_length=500)
 
     @field_validator("schedule_times")
     @classmethod
@@ -71,7 +71,7 @@ class MedicationResponse(MedicationBase):
 
     id: int
     profile_id: int
-    plain_explanation: Optional[str] = None
+    plain_explanation: str | None = None
     created_at: datetime
 
 
@@ -80,7 +80,7 @@ class DoseLogCreate(BaseModel):
     dose_date: date
     scheduled_time: str
     status: str = Field(..., pattern="^(taken|skipped)$")
-    notes: Optional[str] = None
+    notes: str | None = None
 
 
 class DoseLogResponse(BaseModel):
@@ -99,8 +99,8 @@ class DoseLogResponse(BaseModel):
 class AppointmentBase(BaseModel):
     doctor_name: str = Field(..., min_length=2, max_length=120)
     appointment_date: datetime
-    location: Optional[str] = Field(None, max_length=200)
-    notes: Optional[str] = Field(None, max_length=500)
+    location: str | None = Field(None, max_length=200)
+    notes: str | None = Field(None, max_length=500)
 
 
 class AppointmentCreate(AppointmentBase):
@@ -120,10 +120,9 @@ class AppointmentResponse(AppointmentBase):
 
 
 class AccessSettingsUpdate(BaseModel):
-    caretaker_access_enabled: Optional[bool] = None
-    family_access_enabled: Optional[bool] = None
-    elder_email: Optional[str] = None
-    caretaker_email: Optional[str] = None
-    family_email: Optional[str] = None
-    regenerate_role: Optional[str] = None  # "caretaker", "family", "elder"
-
+    caretaker_access_enabled: bool | None = None
+    family_access_enabled: bool | None = None
+    elder_email: str | None = None
+    caretaker_email: str | None = None
+    family_email: str | None = None
+    regenerate_role: str | None = None  # "caretaker", "family", "elder"

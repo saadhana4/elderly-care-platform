@@ -1,8 +1,7 @@
 """Tests for Passcode Authentication, Role Access, and Rate Limiting."""
 
-import pytest
 from app.models import Profile
-from app.security import verify_passcode, auth_rate_limiter
+from app.security import auth_rate_limiter, verify_passcode
 
 
 def test_create_profile_generates_three_hashed_passcodes(client, db_session):
@@ -22,12 +21,12 @@ def test_create_profile_generates_three_hashed_passcodes(client, db_session):
     data = response.json()
     assert "care_id" in data
     assert data["elder_name"] == "Arthur Pendelton"
-    
+
     passcodes = data["passcodes"]
     assert "elder" in passcodes
     assert "caretaker" in passcodes
     assert "family" in passcodes
-    
+
     # Verify codes are distinct
     assert passcodes["elder"] != passcodes["caretaker"]
     assert passcodes["caretaker"] != passcodes["family"]
@@ -39,7 +38,7 @@ def test_create_profile_generates_three_hashed_passcodes(client, db_session):
     assert db_profile.elder_passcode_hash != passcodes["elder"]
     assert db_profile.caretaker_passcode_hash != passcodes["caretaker"]
     assert db_profile.family_passcode_hash != passcodes["family"]
-    
+
     # Ensure bcrypt hash verifies successfully
     assert verify_passcode(passcodes["elder"], db_profile.elder_passcode_hash)
     assert verify_passcode(passcodes["caretaker"], db_profile.caretaker_passcode_hash)
@@ -74,7 +73,7 @@ def test_login_invalid_passcode(client, sample_profile):
 def test_rate_limiting_on_repeated_failed_logins(client, sample_profile):
     """Test that exceeding MAX_AUTH_ATTEMPTS locks out the client with 429 Too Many Requests."""
     care_id = sample_profile.care_id
-    
+
     # Reset limiter state before test
     auth_rate_limiter._attempts.clear()
 

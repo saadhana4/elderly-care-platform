@@ -1,43 +1,48 @@
 """FastAPI dependencies for authentication, role enforcement, and session management."""
 
-from typing import Optional, Dict, Any
-from fastapi import Request, Depends, HTTPException, status
-from fastapi.responses import RedirectResponse
+from typing import Any
+
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
+from app.config import SESSION_COOKIE_NAME
 from app.database import get_db
 from app.models import Profile
 from app.security import decode_session_token
 
 
-SESSION_COOKIE_NAME = "carenest_session"
-
-
 def get_current_user_optional(
     request: Request,
     db: Session = Depends(get_db),
-) -> Optional[Dict[str, Any]]:
-    """Retrieve the authenticated user session from cookie or Authorization header, if any."""
-    token = request.cookies.get(SESSION_COOKIE_NAME)
+) -> dict[str, Any] | None:
+    """Retrieve the authenticated user session from cookie or Authorization header, if present.
+
+    Args:
+        request (Request): The incoming FastAPI request.
+        db (Session): Database session.
+
+    Returns:
+        Optional[Dict[str, Any]]: User session dictionary if valid and active, None otherwise.
+    """
+    token: str | None = request.cookies.get(SESSION_COOKIE_NAME)
     if not token:
-        # Also check Authorization header for API testing
-        auth_header = request.headers.get("Authorization")
+        auth_header: str | None = request.headers.get("Authorization")
         if auth_header and auth_header.startswith("Bearer "):
             token = auth_header.split(" ", 1)[1]
 
     if not token:
         return None
 
-    payload = decode_session_token(token)
+    payload: dict[str, Any] | None = decode_session_token(token)
     if not payload:
         return None
 
-    profile_id = payload.get("profile_id")
-    role = payload.get("role")
+    profile_id: int | None = payload.get("profile_id")
+    role: str | None = payload.get("role")
     if not profile_id or not role:
         return None
 
-    profile = db.query(Profile).filter(Profile.id == profile_id).first()
+    profile: Profile | None = db.query(Profile).filter(Profile.id == profile_id).first()
     if not profile:
         return None
 
@@ -58,12 +63,22 @@ def get_current_user_optional(
 
 def get_current_user(
     request: Request,
-    current_user: Optional[Dict[str, Any]] = Depends(get_current_user_optional),
-) -> Dict[str, Any]:
-    """Require an authenticated user. Redirects to /login for HTML requests or raises 401."""
+    current_user: dict[str, Any] | None = Depends(get_current_user_optional),
+) -> dict[str, Any]:
+    """Require an authenticated user; redirects HTML requests to login or raises HTTP 401.
+
+    Args:
+        request (Request): The incoming FastAPI request.
+        current_user (Optional[Dict[str, Any]]): Result of get_current_user_optional dependency.
+
+    Returns:
+        Dict[str, Any]: The active user session dictionary.
+
+    Raises:
+        HTTPException: 307 Temporary Redirect for browser requests, 401 Unauthorized for API clients.
+    """
     if not current_user:
-        # If client accepts text/html, redirect to login page
-        accept = request.headers.get("accept", "")
+        accept: str = request.headers.get("accept", "")
         if "text/html" in accept:
             raise HTTPException(
                 status_code=status.HTTP_307_TEMPORARY_REDIRECT,
@@ -77,9 +92,19 @@ def get_current_user(
 
 
 def require_editor(
-    current_user: Dict[str, Any] = Depends(get_current_user),
-) -> Dict[str, Any]:
-    """Require Elder or Caretaker role. Family members are view-only."""
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Require Elder or Caretaker role. Family members have view-only access.
+
+    Args:
+        current_user (Dict[str, Any]): Active authenticated user session.
+
+    Returns:
+        Dict[str, Any]: Verified editor user session dictionary.
+
+    Raises:
+        HTTPException: 403 Forbidden if user is a Family member.
+    """
     if current_user["role"] not in ("elder", "caretaker"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -89,9 +114,19 @@ def require_editor(
 
 
 def require_elder(
-    current_user: Dict[str, Any] = Depends(get_current_user),
-) -> Dict[str, Any]:
-    """Require Elder role for master profile management."""
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Require Elder role for primary access management and passcode configuration.
+
+    Args:
+        current_user (Dict[str, Any]): Active authenticated user session.
+
+    Returns:
+        Dict[str, Any]: Verified primary elder user session dictionary.
+
+    Raises:
+        HTTPException: 403 Forbidden if caller is not the primary elder.
+    """
     if current_user["role"] != "elder":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

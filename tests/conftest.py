@@ -1,15 +1,15 @@
 """Pytest configuration, fixtures, and in-memory test database."""
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from fastapi.testclient import TestClient
 
 from app.database import Base, get_db
 from app.main import app
-from app.models import Profile, Medication, Appointment, DoseLog
-from app.security import hash_passcode, create_session_token
+from app.models import Profile
+from app.security import create_session_token, hash_passcode
 
 # In-memory SQLite for high-speed, isolated testing
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
@@ -26,6 +26,7 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_
 def reset_rate_limiter():
     """Clear rate limiter attempts between tests to prevent test bleed."""
     from app.security import auth_rate_limiter
+
     auth_rate_limiter._attempts.clear()
     yield
     auth_rate_limiter._attempts.clear()
@@ -46,6 +47,7 @@ def db_session():
 @pytest.fixture(scope="function")
 def client(db_session):
     """FastAPI TestClient with overridden get_db dependency."""
+
     def override_get_db():
         try:
             yield db_session
@@ -84,34 +86,40 @@ def sample_profile(db_session):
 @pytest.fixture(scope="function")
 def elder_auth_headers(sample_profile):
     """Auth session cookie headers for Elder."""
-    token = create_session_token({
-        "profile_id": sample_profile.id,
-        "care_id": sample_profile.care_id,
-        "elder_name": sample_profile.elder_name,
-        "role": "elder",
-    })
+    token = create_session_token(
+        {
+            "profile_id": sample_profile.id,
+            "care_id": sample_profile.care_id,
+            "elder_name": sample_profile.elder_name,
+            "role": "elder",
+        }
+    )
     return {"Cookie": f"carenest_session={token}"}
 
 
 @pytest.fixture(scope="function")
 def caretaker_auth_headers(sample_profile):
     """Auth session cookie headers for Caretaker."""
-    token = create_session_token({
-        "profile_id": sample_profile.id,
-        "care_id": sample_profile.care_id,
-        "elder_name": sample_profile.elder_name,
-        "role": "caretaker",
-    })
+    token = create_session_token(
+        {
+            "profile_id": sample_profile.id,
+            "care_id": sample_profile.care_id,
+            "elder_name": sample_profile.elder_name,
+            "role": "caretaker",
+        }
+    )
     return {"Cookie": f"carenest_session={token}"}
 
 
 @pytest.fixture(scope="function")
 def family_auth_headers(sample_profile):
     """Auth session cookie headers for Family (View-Only)."""
-    token = create_session_token({
-        "profile_id": sample_profile.id,
-        "care_id": sample_profile.care_id,
-        "elder_name": sample_profile.elder_name,
-        "role": "family",
-    })
+    token = create_session_token(
+        {
+            "profile_id": sample_profile.id,
+            "care_id": sample_profile.care_id,
+            "elder_name": sample_profile.elder_name,
+            "role": "family",
+        }
+    )
     return {"Cookie": f"carenest_session={token}"}

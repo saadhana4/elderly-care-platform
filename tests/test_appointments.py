@@ -1,10 +1,13 @@
 """Tests for Doctor Appointments CRUD and Role Permissions."""
 
 from datetime import datetime, timedelta
+
 from app.models import Appointment
 
 
-def test_elder_and_caretaker_can_manage_appointments(client, sample_profile, db_session, elder_auth_headers, caretaker_auth_headers):
+def test_elder_and_caretaker_can_manage_appointments(
+    client, sample_profile, db_session, elder_auth_headers, caretaker_auth_headers
+):
     """Test creating, editing, and deleting doctor appointments."""
     appt_time = (datetime.now() + timedelta(days=2)).strftime("%Y-%m-%dT10:30")
 
@@ -22,10 +25,14 @@ def test_elder_and_caretaker_can_manage_appointments(client, sample_profile, db_
     )
     assert res_create.status_code == 303
 
-    appt = db_session.query(Appointment).filter(
-        Appointment.profile_id == sample_profile.id,
-        Appointment.doctor_name.like("%Jenkins%"),
-    ).first()
+    appt = (
+        db_session.query(Appointment)
+        .filter(
+            Appointment.profile_id == sample_profile.id,
+            Appointment.doctor_name.like("%Jenkins%"),
+        )
+        .first()
+    )
     assert appt is not None
     assert "Heart Pavilion" in appt.location
 
