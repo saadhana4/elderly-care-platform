@@ -66,7 +66,7 @@ def send_email(
         logger.info("Successfully dispatched email notification to %s", to_email)
         return True
 
-    except (smtplib.SMTPException, OSError, ConnectionError) as err:
+    except (smtplib.SMTPException, OSError, ConnectionError, Exception) as err:
         logger.error("SMTP transport error delivering to %s: %s", to_email, str(err))
         return False
 

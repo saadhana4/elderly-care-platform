@@ -116,7 +116,7 @@ def authenticate_passcode(
             )
         return profile, "family", None
 
-    return profile, None, "Invalid Passcode. Please check the code provided for your role."
+    return profile, None, "Invalid Care ID or Passcode. Please verify your credentials."
 
 
 def regenerate_role_passcode(db: Session, profile: Profile, role: str) -> str:

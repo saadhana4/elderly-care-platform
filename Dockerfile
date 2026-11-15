@@ -1,5 +1,5 @@
 # ==============================================================================
-# CareNest - Google Cloud Run Ready Dockerfile
+# CareNest - Container Ready Dockerfile (Render, Cloud Run, VPS, Docker)
 # Optimized for minimal size, fast startup, and non-root security.
 # ==============================================================================
 
@@ -30,8 +30,8 @@ RUN useradd -m -u 1000 appuser && \
     chown -R appuser:appuser /app
 USER appuser
 
-# Document default Cloud Run HTTP port
+# Document default container HTTP port
 EXPOSE 8080
 
-# Cloud Run dynamic $PORT execution
+# Container dynamic $PORT execution (compatible with Render, Cloud Run, etc.)
 CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1"]

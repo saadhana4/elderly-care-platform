@@ -126,7 +126,7 @@ def login_submit(
         value=session_token,
         httponly=True,
         samesite="lax",
-        secure=settings.ENVIRONMENT == "production",
+        secure=settings.ENVIRONMENT.lower() == "production",
         max_age=SESSION_TOKEN_EXPIRATION_SECONDS,
     )
     return response
@@ -228,7 +228,12 @@ def logout() -> RedirectResponse:
         url="/login?success=You+have+been+signed+out+safely",
         status_code=status.HTTP_302_FOUND,
     )
-    response.delete_cookie(key=SESSION_COOKIE_NAME)
+    response.delete_cookie(
+        key=SESSION_COOKIE_NAME,
+        httponly=True,
+        samesite="lax",
+        secure=settings.ENVIRONMENT.lower() == "production",
+    )
     return response
 
 

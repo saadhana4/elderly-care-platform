@@ -135,6 +135,35 @@ def decode_session_token(token: str) -> dict[str, Any] | None:
         return None
 
 
+def generate_csrf_token(seed: str | None = None) -> str:
+    """Generate a cryptographically secure CSRF token.
+
+    Args:
+        seed (str | None): Optional seed string (e.g. session token).
+
+    Returns:
+        str: Hex-encoded CSRF token string.
+    """
+    if seed:
+        return hmac.new(settings.SECRET_KEY.encode(), seed.encode(), hashlib.sha256).hexdigest()
+    return secrets.token_hex(32)
+
+
+def verify_csrf_token(submitted_token: str | None, expected_token: str | None) -> bool:
+    """Verify submitted CSRF token matches expected token in constant time.
+
+    Args:
+        submitted_token (str | None): Token sent in request header or form body.
+        expected_token (str | None): Token stored in cookie or session.
+
+    Returns:
+        bool: True if tokens are non-empty and match identically, False otherwise.
+    """
+    if not submitted_token or not expected_token:
+        return False
+    return hmac.compare_digest(submitted_token.strip(), expected_token.strip())
+
+
 class AuthRateLimiter:
     """Sliding-window in-memory rate limiter to prevent brute-force passcode attacks."""
 

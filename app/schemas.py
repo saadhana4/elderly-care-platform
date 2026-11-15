@@ -2,7 +2,7 @@
 
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ProfileCreate(BaseModel):
@@ -57,6 +57,12 @@ class MedicationBase(BaseModel):
                 raise ValueError(f"Time '{p}' is not a valid 24-hour time.")
         return ", ".join(parts)
 
+    @model_validator(mode="after")
+    def validate_date_range(self) -> "MedicationBase":
+        if self.end_date and self.start_date and self.end_date < self.start_date:
+            raise ValueError("End date cannot be earlier than start date.")
+        return self
+
 
 class MedicationCreate(MedicationBase):
     pass
@@ -80,7 +86,18 @@ class DoseLogCreate(BaseModel):
     dose_date: date
     scheduled_time: str
     status: str = Field(..., pattern="^(taken|skipped)$")
-    notes: str | None = None
+    notes: str | None = Field(None, max_length=500)
+
+    @field_validator("scheduled_time")
+    @classmethod
+    def validate_scheduled_time(cls, v: str) -> str:
+        clean = v.strip()
+        if len(clean) != 5 or clean[2] != ":":
+            raise ValueError(f"Time '{clean}' must be in HH:MM format.")
+        hour, minute = clean.split(":")
+        if not (hour.isdigit() and minute.isdigit() and 0 <= int(hour) <= 23 and 0 <= int(minute) <= 59):
+            raise ValueError(f"Time '{clean}' is not a valid 24-hour time.")
+        return clean
 
 
 class DoseLogResponse(BaseModel):

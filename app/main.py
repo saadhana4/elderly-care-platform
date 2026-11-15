@@ -3,17 +3,24 @@
 Main FastAPI Application Entrypoint.
 """
 
+import hmac
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Union
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import Response
 
-from app.config import settings
+from app.config import (
+    CSRF_COOKIE_NAME,
+    CSRF_HEADER_NAME,
+    logger,
+    settings,
+    validate_production_secrets,
+)
 from app.database import init_db
 from app.routers import (
     appointments,
@@ -25,6 +32,7 @@ from app.routers import (
 from app.routers import (
     settings as settings_router,
 )
+from app.security import generate_csrf_token
 
 
 @asynccontextmanager
@@ -34,6 +42,7 @@ async def lifespan(app: FastAPI):
     Args:
         app (FastAPI): The application instance.
     """
+    validate_production_secrets()
     init_db()
     yield
 
@@ -64,18 +73,94 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=(), payment=()"
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "style-src 'self' 'unsafe-inline'; "
             "script-src 'self' 'unsafe-inline'; "
             "img-src 'self' data:; "
             "font-src 'self'; "
-            "connect-src 'self';"
+            "connect-src 'self'; "
+            "frame-ancestors 'none';"
         )
         return response
 
 
+class CSRFProtectionMiddleware(BaseHTTPMiddleware):
+    """Middleware enforcing Cross-Site Request Forgery (CSRF) protections for state changes."""
+
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        """Validate origin and CSRF tokens on state-changing requests.
+
+        Args:
+            request (Request): Incoming HTTP request.
+            call_next (RequestResponseEndpoint): Next middleware or route endpoint.
+
+        Returns:
+            Response: Response from downstream route or 403 Forbidden.
+        """
+        cookie_csrf: str | None = request.cookies.get(CSRF_COOKIE_NAME)
+        csrf_token: str = cookie_csrf or generate_csrf_token()
+        request.state.csrf_token = csrf_token
+
+        if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+            # 1. Reject explicit cross-site fetch metadata
+            sec_fetch_site = request.headers.get("sec-fetch-site")
+            if sec_fetch_site == "cross-site":
+                logger.warning("CSRF blocked: cross-site fetch detected on %s", request.url.path)
+                return JSONResponse(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    content={"detail": "Forbidden: Cross-site request rejected."},
+                )
+
+            # 2. Verify Origin header against Host if present
+            origin = request.headers.get("origin")
+            host = request.headers.get("host")
+            if origin and host:
+                origin_host = origin.split("://")[-1].rstrip("/")
+                host_clean = host.rstrip("/")
+                is_local = (
+                    origin_host.startswith("localhost")
+                    or origin_host.startswith("127.0.0.1")
+                    or origin_host == "testserver"
+                )
+                if origin_host != host_clean and not is_local:
+                    logger.warning("CSRF blocked: untrusted origin '%s' on %s", origin, request.url.path)
+                    return JSONResponse(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        content={"detail": "Forbidden: Untrusted cross-origin request rejected."},
+                    )
+
+            # 3. Verify submitted X-CSRF-Token header if provided
+            submitted_token = request.headers.get(CSRF_HEADER_NAME.lower()) or request.headers.get(
+                CSRF_HEADER_NAME
+            )
+            if submitted_token:
+                if not cookie_csrf or not hmac.compare_digest(submitted_token.strip(), cookie_csrf.strip()):
+                    logger.warning("CSRF blocked: invalid token submitted on %s", request.url.path)
+                    return JSONResponse(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        content={"detail": "Forbidden: Invalid CSRF token."},
+                    )
+
+        response: Response = await call_next(request)
+
+        # Set or refresh CSRF cookie
+        if not cookie_csrf:
+            response.set_cookie(
+                key=CSRF_COOKIE_NAME,
+                value=csrf_token,
+                httponly=False,
+                samesite="lax",
+                secure=settings.ENVIRONMENT.lower() == "production",
+                max_age=86400 * 7,
+            )
+
+        return response
+
+
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(CSRFProtectionMiddleware)
 
 # Static Assets Mount
 BASE_DIR: Path = Path(__file__).resolve().parent
@@ -119,3 +204,33 @@ async def custom_404_handler(request: Request, exc: Exception) -> Union[Redirect
     if "text/html" in accept:
         return RedirectResponse(url="/today?msg=Page+not+found", status_code=status.HTTP_303_SEE_OTHER)
     return JSONResponse(status_code=404, content={"detail": "Resource not found"})
+
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception) -> Response:
+    """Catch-all generic exception handler to avoid leaking internal stack traces or details.
+
+    Args:
+        request (Request): The incoming request that failed.
+        exc (Exception): The uncaught exception.
+
+    Returns:
+        Response: Generic JSON or redirected error response without internal details.
+    """
+    if isinstance(exc, HTTPException):
+        # Allow standard HTTPExceptions to propagate to FastAPI default handler
+        raise exc
+
+    logger.error(
+        "Internal unhandled error on %s %s: %s", request.method, request.url.path, exc, exc_info=True
+    )
+    accept: str = request.headers.get("accept", "")
+    if "text/html" in accept:
+        return RedirectResponse(
+            url="/today?msg=An+unexpected+error+occurred.+Please+try+again.",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "An internal server error occurred. Please try again later."},
+    )

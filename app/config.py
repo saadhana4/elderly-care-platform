@@ -22,6 +22,8 @@ DEFAULT_AUTH_MAX_ATTEMPTS: int = 5
 DEFAULT_AUTH_LOCKOUT_SECONDS: int = 60
 SESSION_COOKIE_NAME: str = "carenest_session"
 SESSION_TOKEN_EXPIRATION_SECONDS: int = 86400 * 7  # 7 days
+CSRF_COOKIE_NAME: str = "carenest_csrf"
+CSRF_HEADER_NAME: str = "X-CSRF-Token"
 
 CARE_ID_PREFIX: str = "CARE"
 CARE_ID_RANDOM_DIGITS: int = 4
@@ -38,6 +40,30 @@ ADHERENCE_LOOKBACK_DAYS: int = 7
 ADHERENCE_DEFAULT_PERCENTAGE: int = 100
 RECENT_HISTORY_LIMIT: int = 10
 DEFAULT_SCHEDULE_TIMES: str = "08:00"
+
+# Strict input maximum lengths
+MAX_LENGTH_NAME: int = 100
+MAX_LENGTH_DOSAGE: int = 80
+MAX_LENGTH_NOTES: int = 500
+MAX_LENGTH_EMERGENCY_NOTES: int = 1000
+MAX_LENGTH_LOCATION: int = 200
+MAX_LENGTH_EMAIL: int = 120
+
+# Known placeholder secrets that MUST be overridden in production
+INSECURE_DEFAULT_SECRET_KEYS: set[str] = {
+    "carenest-insecure-secret-key-change-me",
+    "change-this-to-a-secure-random-secret-key-at-least-32-chars",
+    "secret",
+    "changeme",
+    "",
+}
+INSECURE_DEFAULT_SCHEDULER_TOKENS: set[str] = {
+    "scheduler-secret-token",
+    "scheduler-super-secret-token-change-in-prod",
+    "secret",
+    "changeme",
+    "",
+}
 
 
 class Settings:
@@ -71,6 +97,33 @@ class Settings:
 
 
 settings: Settings = Settings()
+
+
+def validate_production_secrets(config: Settings | None = None) -> None:
+    """Validate that production environment does not use insecure default secrets.
+
+    Args:
+        config (Optional[Settings]): Configuration instance to validate. Defaults to global settings.
+
+    Raises:
+        RuntimeError: If running in production with default/placeholder secrets.
+    """
+    active_config = config or settings
+    if active_config.ENVIRONMENT.lower() == "production":
+        secret_key = active_config.SECRET_KEY.strip()
+        if secret_key in INSECURE_DEFAULT_SECRET_KEYS or len(secret_key) < 16:
+            raise RuntimeError(
+                "CRITICAL SECURITY CONFIGURATION ERROR: In production, SECRET_KEY must be "
+                "configured with a strong, non-default random string (minimum 16 characters)."
+            )
+
+        scheduler_token = active_config.SCHEDULER_SECRET_TOKEN.strip()
+        if scheduler_token in INSECURE_DEFAULT_SCHEDULER_TOKENS or len(scheduler_token) < 8:
+            raise RuntimeError(
+                "CRITICAL SECURITY CONFIGURATION ERROR: In production, SCHEDULER_SECRET_TOKEN must "
+                "be configured with a strong, non-default secret string (minimum 8 characters)."
+            )
+
 
 # Setup application logger
 logger: logging.Logger = logging.getLogger("carenest")
