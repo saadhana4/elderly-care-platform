@@ -7,30 +7,31 @@
 CareNest is an elder-centred medication and healthcare routine platform designed to reduce medication errors, bridge communication gaps between seniors, caretakers, and families, and safeguard senior autonomy. 
 
 ### User Personas & Elder-Centred Design
-- **The Primary Elder (👑 Eleanor)**: The central decision-maker. Unlike conventional care apps that treat seniors as passive recipients, CareNest gives the elder final sovereign authority over their healthcare profile. The elder can log their own doses with high-visibility touch controls, view simplified medication purposes, and unilaterally approve, pause, or revoke access for any caretaker or family member.
-- **The Caretaker (🤝 Nurse/Caregiver)**: The operational healthcare partner. Caretakers assist with managing prescriptions, scheduling doctor visits, and recording whether daily doses were taken or skipped. They have operational edit rights but cannot revoke the elder's ownership or access.
-- **The Family Member (👪 Adult Child/Relative)**: The supportive observer. Family members often live far away and worry about adherence. They are provided secure **view-only access** to inspect daily routines, monitor adherence trends, view upcoming appointments, and receive automated email alert digests without risking accidental modifications to prescriptions.
+- **The Primary Elder (👑 Sovereign Decision-Maker)**: The central focus of the entire care model. Conventional care applications frequently treat older adults as passive recipients of care whose schedules are managed by others. CareNest reverses this dynamic by giving the elder sovereign authority over their health profile. The elder can log their own doses with high-visibility touch controls, listen to their daily routine with Web Speech read-aloud features, view plain-language medicine guides, and unilaterally approve, pause, or revoke access for any caretaker or family member.
+- **The Caretaker (🤝 Healthcare Partner)**: The operational caregiver (nurse, home aide, or primary family caregiver). Caretakers manage daily prescriptions, schedule doctor visits, and record whether daily doses were taken or skipped. They possess operational read/write permissions but cannot revoke the elder's ownership or access.
+- **The Family Member (👪 Supportive Observer)**: Adult children and relatives who often live far away. Family members receive **view-only access** to inspect daily routines, monitor adherence scores, view upcoming appointments, and receive automated email alert digests for missed doses without risking accidental modifications to active prescriptions.
 
 ---
 
 ## 2. Approach and Logic
 
 ### Role-Based Access Control (RBAC) & Context Decisions
-User context is established at sign-in by validating a Care Profile ID (e.g. `CARE-1042`) against three distinct bcrypt-hashed passcodes. On success, an HMAC-signed session cookie stores `{profile_id, care_id, elder_name, role}`:
-- **Elder**: Full read/write access + administrative control over access toggles and passcode regeneration.
+User context is established at sign-in by validating a Care Profile ID (e.g. `CARE-1042`) against three distinct bcrypt-hashed passcodes. On successful authentication, an HMAC-signed session cookie stores `{profile_id, care_id, elder_name, role}`:
+- **Elder**: Full read/write access + administrative control over access toggles, passcode regeneration, and emergency directives.
 - **Caretaker**: Full read/write access to medications, appointments, and dose logs. Blocked from administrative access management.
-- **Family**: Read-only access across all views. Write actions (POST `/medications/*`, `/appointments/*`, `/doses/log`) return `HTTP 403 Forbidden`.
-- **Elder Sovereignty Enforcement**: On every request by a caretaker or family member, `app/dependencies.py` checks `caretaker_access_enabled` and `family_access_enabled`. If the elder has revoked a role, that member is immediately rejected.
+- **Family**: Read-only access across all views. Write actions (`POST /medications/*`, `/appointments/*`, `/doses/log`) return `HTTP 403 Forbidden`.
+- **Elder Sovereignty Enforcement**: On every request by a caretaker or family member, `app/dependencies.py` verifies `caretaker_access_enabled` and `family_access_enabled`. If the elder has revoked a role, that member is immediately rejected.
 
 ### The "Today" Dose View Logic
 1. Loads active medications for today where `start_date <= today` and (`end_date is None` or `end_date >= today`).
 2. Expands each medication's comma-separated schedule (e.g. `"08:00, 20:00"`) into discrete dose slots for the calendar date.
 3. Compares each slot against existing `DoseLog` entries in SQLite:
    - If marked `taken`: flagged as `taken` (green badge, records which role logged it).
-   - If marked `skipped`: flagged as `skipped` (neutral badge).
+   - If marked `skipped`: flagged as `skipped` (neutral slate badge).
    - If unlogged and `scheduled_time < current_time`: flagged as `overdue` (red alert).
-   - If unlogged and `scheduled_time >= current_time`: flagged as `pending` (blue).
+   - If unlogged and `scheduled_time >= current_time`: flagged as `pending` (blue badge).
 4. Generates big, accessible 60px "Mark Taken" and "Skip Dose" buttons for editors (disabled in view-only family mode).
+5. Provides a senior-friendly **Read Aloud** button that uses the browser's speech synthesis API to speak today's routine out loud.
 
 ### Adherence Percentage Calculation
 Adherence is computed dynamically from logged dose records:
@@ -64,62 +65,69 @@ If any alerts are detected, the engine composes a plain-text notification digest
 ```text
 Healthapp/
 ├── app/
-│   ├── config.py               # Settings from environment (.env)
+│   ├── config.py               # Constants, security windows, input limits & secret validation
 │   ├── database.py             # SQLite engine & session management
 │   ├── dependencies.py         # Auth validation & role gatekeeping (require_editor, require_elder)
-│   ├── main.py                 # FastAPI initialization, security middleware & router inclusion
+│   ├── main.py                 # FastAPI init, security & CSRF middleware, exception handlers
 │   ├── models.py               # SQLAlchemy ORM models (Profile, Medication, DoseLog, Appointment)
-│   ├── schemas.py              # Pydantic V2 data validation models
+│   ├── schemas.py              # Pydantic V2 data validation models with length constraints
 │   ├── security.py             # Bcrypt hashing, session HMAC tokens, sliding-window rate limiter
 │   ├── routers/
 │   │   ├── appointments.py     # Appointments listing, creation, editing, deletion
 │   │   ├── auth.py             # Profile creation, passcode login, logout
 │   │   ├── dashboard.py        # /today dose view, Taken/Skip dose logger, adherence score
 │   │   ├── medications.py      # Medication CRUD, Gemini AI explanation views
-│   │   ├── settings.py         # Elder sovereign access management (revoke roles, regenerate passcodes)
+│   │   ├── settings.py         # Elder access control (revoke roles, regenerate passcodes)
 │   │   └── tasks.py            # POST /tasks/send-reminders cron endpoint
 │   ├── services/
+│   │   ├── dose_service.py     # Schedule expansion and adherence scoring logic
 │   │   ├── email_service.py    # SMTP delivery with safe mock logging fallback
 │   │   ├── gemini_service.py   # Gemini API integration with offline fallback & disclaimer
+│   │   ├── profile_service.py  # Profile retrieval, access toggles, and passcode rotation
 │   │   └── reminder_service.py # Scanner for missed doses, upcoming doses, and appointments
 │   ├── static/
-│   │   ├── css/styles.css      # Accessible styling (18px base, WCAG AAA contrast, focus outlines)
-│   │   └── js/app.js           # Vanilla JS for Large Text (A+) & High Contrast toggles
+│   │   ├── css/styles.css      # Accessible styling (18px base, WCAG AAA contrast, focus rings)
+│   │   └── js/app.js           # Read Aloud speech synthesis, text size & contrast controls
 │   └── templates/              # Accessible Jinja2 server-rendered templates
-│       ├── base.html           # Layout with skip-link, accessibility toolbar, role banner
+│       ├── base.html           # Layout with skip-link, live region, accessibility controls
 │       ├── login.html          # Sign-in by Care ID and Passcode
 │       ├── create_profile.html # New elderly profile registration
 │       ├── passcodes_created.html # Initial display of 3 generated passcodes
-│       ├── today.html          # Big button dose tracking & adherence meter
+│       ├── today.html          # Read Aloud button, dose cards & adherence meter
 │       ├── medications.html    # Prescription schedules
 │       ├── medication_form.html# Add / edit medication
-│       ├── medication_explain.html # Plain-language AI medication card
+│       ├── medication_explain.html # Plain-language AI medication guide
 │       ├── appointments.html   # Scheduled doctor consultations
 │       ├── appointment_form.html # Add / edit doctor appointment
-│       └── profile_access.html # Elder access control panel
-├── tests/                      # 19 automated pytest tests
+│       └── profile_access.html # Elder access control panel & role guide
+├── tests/                      # 55 automated pytest tests (~91% coverage)
 │   ├── conftest.py             # In-memory SQLite fixtures & authenticated clients
+│   ├── test_accessibility_alignment.py # WCAG 2.2 landmarks, skip link, live region, roles
 │   ├── test_appointments.py    # Doctor appointment scheduling & permissions
 │   ├── test_auth.py            # Passcode hashing, login, rate limiting, access revocation
 │   ├── test_dose_tracking.py   # Taken/Skip updates, view permissions, adherence calculation
 │   ├── test_medications.py     # Medication CRUD, Pydantic validation, Gemini service
 │   ├── test_reminders.py       # Secret header verification, reminder detection
+│   ├── test_security_hardened.py # Security headers, CSRF, production secrets, cookie flags
 │   └── test_settings.py        # Elder access controls & emergency notes updates
 ├── .dockerignore
 ├── .env.example
 ├── .gitignore
-├── Dockerfile                  # Container build supporting dynamic $PORT
+├── Dockerfile                  # Non-root container build supporting dynamic $PORT
+├── pyproject.toml              # Ruff and pytest-cov configuration
 ├── README.md                   # System documentation
-└── requirements.txt            # Python dependencies
+├── requirements.txt            # Pinned runtime dependencies
+└── requirements-dev.txt        # Development dependencies (pytest, pytest-cov, ruff)
 ```
 
 ### Main User Flows
 1. **Onboarding**: A new care profile is created for an elderly individual. The platform generates a unique `CARE-XXXX` ID and three role passcodes (`ELD-XXXX`, `CAR-XXXX`, `FAM-XXXX`). Passcodes are displayed once with printing guidance and hashed with bcrypt.
-2. **Daily Care Routine**: The elder or caretaker signs in, lands on the "Today" view, reviews scheduled doses, and taps the large green "Mark Taken" or gray "Skip Dose" buttons. Adherence updates instantly.
-3. **Understanding Prescriptions**: Users click "Plain-Language Medicine Guide" on any medication to read clear AI explanations of the drug's purpose, common side effects, and precautions with a medical disclaimer.
-4. **Doctor Visits**: The elder or caretaker schedules upcoming consultations with doctor name, date/time, clinic location, and preparation notes.
-5. **Elder Authority**: The elder accesses `/settings/access` to view active members, revoke or reinstate caretaker/family access, or regenerate compromised passcodes.
-6. **Automated Monitoring**: An external cron calls `POST /tasks/send-reminders` with the secret header token to trigger alert emails to registered contacts.
+2. **Daily Care Routine**: The elder or caretaker signs in, lands on the "Today" view, reviews scheduled doses, and taps the large green "Mark Taken" or slate "Skip Dose" buttons. Adherence updates instantly.
+3. **Speech Read-Aloud**: Senior users can click the `🔊 Read Aloud` button on the Today view to have their medication routine spoken clearly at a senior-friendly 0.9x cadence using the Web Speech Synthesis API.
+4. **Understanding Prescriptions**: Users click "Plain-Language Medicine Guide" on any medication to read clear AI explanations of the drug's purpose, common side effects, and precautions with a medical disclaimer.
+5. **Doctor Visits**: The elder or caretaker schedules upcoming consultations with doctor name, date/time, clinic location, and preparation notes.
+6. **Elder Sovereign Authority**: The elder accesses `/settings/access` to view active members, revoke or reinstate caretaker/family access, or regenerate compromised passcodes.
+7. **Automated Monitoring**: An external cron calls `POST /tasks/send-reminders` with the secret header token to trigger alert emails to registered contacts.
 
 ### API & Route Overview
 | Method | Endpoint | Access Role | Description |
@@ -129,7 +137,7 @@ Healthapp/
 | `GET` | `/create-profile` | Public | Form to register a new elderly profile |
 | `POST` | `/create-profile` | Public | Creates profile, generates and displays 3 passcodes |
 | `GET` | `/logout` | Authenticated | Clears session cookie and redirects to login |
-| `GET` | `/today` | All Roles | Today's dose schedule, adherence meter, and history |
+| `GET` | `/today` | All Roles | Today's dose schedule, adherence meter, and Read Aloud |
 | `POST` | `/doses/log` | Elder, Caretaker | Records a dose as Taken or Skipped |
 | `GET` | `/medications` | All Roles | Lists all active medication schedules |
 | `GET` | `/medications/new` | Elder, Caretaker | Form to add a new medication |
@@ -167,35 +175,51 @@ Healthapp/
 
 ### Security
 - **Bcrypt Hashing**: All passcodes are hashed using `bcrypt` (12 rounds) before storage; plaintext passcodes are never stored in the database.
+- **CSRF Protection**: State-changing POST requests are protected via `CSRFProtectionMiddleware`, checking double-submit tokens (`X-CSRF-Token` header, cookie matching, and `Origin`/`Sec-Fetch-Site` verification).
+- **Security Headers on Every Response**:
+  - `Content-Security-Policy`: Restricts scripts, styles, fonts, and images to self and safe data URIs.
+  - `X-Content-Type-Options: nosniff`
+  - `X-Frame-Options: DENY` (anti-clickjacking)
+  - `Referrer-Policy: strict-origin-when-cross-origin`
+  - `Permissions-Policy: geolocation=(), microphone=(), camera=()`
+- **Hardened Session Cookies**: Signed with HMAC-SHA256, carrying `HttpOnly=True`, `SameSite="lax"`, and dynamically setting `Secure=True` in production.
 - **Brute-Force Rate Limiting**: An in-memory sliding window limiter tracks failed attempts per (IP, Care ID). More than 5 failed attempts in 60 seconds results in an `HTTP 429 Too Many Requests` lockout.
-- **Tamper-Proof Sessions**: Sessions use cryptographically signed HMAC-SHA256 tokens in `HttpOnly`, `SameSite=Lax` cookies with timestamp expiration.
-- **SQL Injection Prevention**: Built entirely with SQLAlchemy ORM using parameterized queries.
-- **Security Headers Middleware**: Enforces `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection: 1; mode=block`, `Referrer-Policy: strict-origin-when-cross-origin`, and `Content-Security-Policy`.
-- **Protected Cron Endpoint**: `POST /tasks/send-reminders` requires a secret token via `X-Scheduler-Token` or `Authorization: Bearer <TOKEN>`, verified using constant-time `hmac.compare_digest` to prevent timing attacks.
+- **Constant-Time Scheduler Token Verification**: `POST /tasks/send-reminders` verifies the `X-Scheduler-Token` or Bearer header using `hmac.compare_digest` to prevent timing attacks.
+- **Production Secret Fail-Fast**: On startup in `production`, the application immediately raises `RuntimeError` if `SECRET_KEY` or `SCHEDULER_SECRET_TOKEN` still contains default insecure placeholder values.
+- **Input Sanitization & Length Limits**: Strict length constraints enforced via Pydantic V2 schemas on all form fields (names, dosages, notes, times) to protect against buffer exhaustion and injection. Generic login error messages prevent username enumeration.
+- **Non-Root Docker User**: Container runs as an unprivileged user (`appuser`, UID 1000).
 
-### Accessibility
-- **Large Default Typography**: Base font is `18px` with clear, readable system sans-serif fonts.
-- **Instant Toggles**:
-  - `A+ Large Text`: Increases base size to `22px` across all cards, inputs, and buttons (persisted in `localStorage`).
-  - `👁️ High Contrast`: Activates a high-contrast monochrome mode with thick solid borders and yellow focus outlines.
-- **Motor Accessibility**: Giant touch targets—dose action buttons are `60px` in height and inputs are `52px` in height.
-- **WCAG Standards**: Semantic HTML5 landmarks (`<main>`, `<nav>`, `<article>`, `<fieldset>`), `Skip to main content` keyboard shortcut, visible 3px focus rings, and ARIA attributes (`role="progressbar"`, `aria-live="polite"`, `role="alert"`).
+### Accessibility (WCAG 2.2 AA/AAA)
+- **Document Semantics & Landmarks**: Set `lang="en"` on `<html>`, single `<h1>` per view, logical heading hierarchy, and semantic landmarks (`<header role="banner">`, `<main id="main-content" role="main" tabindex="-1">`, `<footer role="contentinfo">`, `<nav>`).
+- **Skip Navigation Link**: Keyboard users can jump immediately past the header to main content with `.skip-link`.
+- **Screen Reader Live Announcements**: Persistent `#status-announcer` (`role="status"`, `aria-live="polite"`, `aria-atomic="true"`) alerts screen readers of dynamic status updates and form submissions.
+- **Web Speech API "Read Aloud"**: Built-in speech synthesis (`#btn-read-aloud`) speaks today's active doses at a gentle 0.9x cadence, gracefully hidden if speech synthesis is not supported.
+- **Accessible Form Controls**: Every form input has a visible `<label>`, `aria-required="true"` on mandatory fields, and helper text linked with `aria-describedby`.
+- **Accessible Tables**: Recent dose history logs use `<caption class="sr-only">` and `<th scope="col">`.
+- **Typography & Touch Targets**: Base font is `18px`, inputs are `52px` tall, and dose buttons are `60px` tall (all interactive elements exceed the $44 \times 44\text{ px}$ target size requirement).
+- **Contrast & Theme Support**:
+  - `A+ Large Text`: Increases base font size to `22px` across all views.
+  - `👁️ High Contrast`: Activates a high-contrast monochrome mode exceeding 7:1 contrast.
+  - Full support for `@media (prefers-reduced-motion: reduce)`, `@media (prefers-contrast: more)`, and 200% text zoom.
+  - Visible focus indicator outlines (`:focus-visible`) with dual offset.
 
 ### Testing
-- **Automated Pytest Suite**: 19 comprehensive automated tests across 6 test modules using an isolated in-memory SQLite database (`sqlite:///:memory:`).
-- **Test Coverage**:
-  - `tests/test_auth.py`: Passcode generation, bcrypt verification, role login, rate limiting lockout, access revocation, and passcode regeneration.
-  - `tests/test_medications.py`: Medication CRUD, schedule validation, family view-only enforcement, and Gemini explainer generation.
+- **Automated Pytest Suite**: **55 automated tests** across 8 test suites using an isolated in-memory SQLite database (`sqlite:///:memory:`).
+- **Test Coverage**: **91.0% overall code coverage** on `app/` measured via `pytest-cov`:
+  - `tests/test_accessibility_alignment.py`: WCAG landmarks, skip link, live region announcer, form aria tags, speech synthesis triggers, elder sovereign banners.
+  - `tests/test_security_hardened.py`: Security headers, CSRF validation, production secret checks, session cookie flags, input validation bounds, timing attack prevention.
+  - `tests/test_auth.py`: Passcode generation, bcrypt verification, role login, rate limiting lockout, access revocation, passcode regeneration.
+  - `tests/test_medications.py`: Medication CRUD, schedule validation, family view-only enforcement, Gemini explainer generation.
   - `tests/test_dose_tracking.py`: Taken/Skip logging, role attribution, and adherence percentage calculation.
   - `tests/test_appointments.py`: Doctor visit creation, modification, deletion, and permission barriers.
   - `tests/test_settings.py`: Elder access control, role disabling, and contact email updates.
   - `tests/test_reminders.py`: Scheduler token authentication, missed dose detection, upcoming dose detection, and appointment alert generation.
-- **Result**: **19 passed** with 100% pass rate.
+- **Pass Rate**: **55 passed** (100% pass rate).
 
 ### Efficiency
-- **Zero Heavy JavaScript Bundles**: Server-rendered HTML via Jinja2 with minimal vanilla JS (~50 lines) eliminates client-side compilation and hydration delays.
+- **Zero Heavy JavaScript Bundles**: Server-rendered HTML via Jinja2 with minimal vanilla JS eliminates client-side hydration delays and heavy runtime overhead.
 - **Cached AI Responses**: Gemini explanations are computed once upon medication addition and stored in SQLite, avoiding repeated API latency and token consumption.
-- **Fast Startup & Low Memory**: Cold start takes less than 1 second, running smoothly in memory-constrained environments (<100MB RAM).
+- **Fast Startup & Low Memory**: Cold start takes under 1 second, running smoothly in memory-constrained environments (<100MB RAM).
 
 ---
 
@@ -218,6 +242,7 @@ python -m venv venv
 
 # Install required packages
 python -m pip install -r requirements.txt
+python -m pip install -r requirements-dev.txt   # Optional: for tests and ruff
 ```
 
 ### 3. Environment Setup
@@ -229,11 +254,13 @@ cp .env.example .env
 ```powershell
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8080 --reload
 ```
-The application will be live at: **[http://localhost:8080](http://localhost:8080)**
+The application will be live at: **[http://127.0.0.1:8080](http://127.0.0.1:8080)**
 
-### 5. Run the Automated Tests
+*(Note: Navigate directly to `http://127.0.0.1:8080` to avoid Windows IPv6 `localhost` resolution conflicts).*
+
+### 5. Run the Automated Tests & Coverage
 ```powershell
-python -m pytest tests/ -v
+python -m pytest tests/ -v --cov=app
 ```
 
 ---
@@ -250,11 +277,10 @@ The application is fully containerized and deployable on **Render** (as a Web Se
 5. Specify the environment variables in the Render dashboard (see Section 8 below).
 6. Click **Deploy Web Service**.
 
-*Note on dynamic ports:* The `Dockerfile` entrypoint:
+*Note on dynamic ports and security:* The `Dockerfile` runs as non-root `appuser` (UID 1000) and entrypoint dynamically binds to the port assigned by Render's runtime via `${PORT}`:
 ```dockerfile
 CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1"]
 ```
-dynamically binds to the port assigned by Render's runtime via `${PORT}`.
 
 ### Triggering Automated Reminders via Cron
 Automated reminder scans are triggered by making an HTTP `POST` request to `/tasks/send-reminders` with the `X-Scheduler-Token` header. This can be configured in any cron scheduler (e.g., Render Cron Job, GitHub Actions, or cron-job.org):
