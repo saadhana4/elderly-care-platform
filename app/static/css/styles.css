@@ -1,0 +1,603 @@
+/* ==========================================================================
+   CareNest Accessible Stylesheet
+   Designed specifically for Elderly Users, Caretakers, and Family Members.
+   - Large default typography (18px base)
+   - High-contrast AAA compliant colors
+   - Visible focus states & full keyboard navigation support
+   - Big touch-friendly buttons (min 52px height)
+   ========================================================================== */
+
+:root {
+  --font-base: 18px;
+  --font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  
+  /* Color Palette - WCAG AAA Compliant Ratios */
+  --color-bg: #f8fafc;
+  --color-card-bg: #ffffff;
+  --color-text: #0f172a;
+  --color-text-muted: #334155;
+  --color-border: #cbd5e1;
+  
+  --color-primary: #1e3a8a;       /* Deep navy blue */
+  --color-primary-hover: #172554;
+  --color-primary-text: #ffffff;
+  
+  --color-success: #065f46;       /* Deep forest green */
+  --color-success-bg: #d1fae5;
+  --color-success-text: #ffffff;
+  
+  --color-warning: #92400e;       /* Deep amber */
+  --color-warning-bg: #fef3c7;
+  --color-warning-text: #ffffff;
+
+  --color-danger: #991b1b;        /* Deep crimson */
+  --color-danger-bg: #fee2e2;
+  --color-danger-text: #ffffff;
+
+  --color-neutral-btn: #334155;
+  --color-neutral-btn-hover: #1e293b;
+
+  --focus-ring: 3px solid #1e3a8a;
+  --focus-offset: 3px;
+  --radius: 12px;
+  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+}
+
+/* Extra Large Text Mode */
+body.text-large {
+  --font-base: 22px;
+}
+
+/* High Contrast Theme */
+body.high-contrast {
+  --color-bg: #ffffff;
+  --color-card-bg: #ffffff;
+  --color-text: #000000;
+  --color-text-muted: #111111;
+  --color-border: #000000;
+  --color-primary: #000000;
+  --color-primary-hover: #222222;
+  --color-primary-text: #ffff00;
+  --color-success: #005a00;
+  --color-warning: #804000;
+  --color-danger: #8a0000;
+  --focus-ring: 4px solid #000000;
+}
+
+/* Reset & Box Sizing */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: var(--font-base);
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-family);
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  line-height: 1.6;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Skip link for screen readers */
+.skip-link {
+  position: absolute;
+  top: -60px;
+  left: 10px;
+  background: var(--color-primary);
+  color: #fff;
+  padding: 12px 18px;
+  z-index: 9999;
+  text-decoration: none;
+  font-weight: bold;
+  border-radius: var(--radius);
+  transition: top 0.2s ease;
+}
+
+.skip-link:focus {
+  top: 10px;
+  outline: var(--focus-ring);
+}
+
+/* Accessible Focus Indicators */
+:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
+}
+
+/* Navigation Header */
+.app-header {
+  background-color: #ffffff;
+  border-bottom: 2px solid var(--color-border);
+  padding: 1rem 1.5rem;
+}
+
+.header-container {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-decoration: none;
+  color: var(--color-primary);
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.brand-icon {
+  font-size: 1.8rem;
+}
+
+.accessibility-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  list-style: none;
+  flex-wrap: wrap;
+}
+
+.nav-link {
+  text-decoration: none;
+  color: var(--color-text);
+  font-weight: 600;
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.nav-link:hover {
+  background-color: #e2e8f0;
+  border-color: var(--color-border);
+}
+
+.nav-link.active {
+  background-color: var(--color-primary);
+  color: #ffffff;
+}
+
+/* User status ribbon */
+.user-ribbon {
+  background-color: #e0f2fe;
+  border-bottom: 1px solid #bae6fd;
+  padding: 0.75rem 1.5rem;
+  font-size: 0.95rem;
+}
+
+.user-ribbon-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.role-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.role-badge.elder {
+  background-color: #dbeafe;
+  color: #1e40af;
+  border: 1px solid #93c5fd;
+}
+
+.role-badge.caretaker {
+  background-color: #d1fae5;
+  color: #065f46;
+  border: 1px solid #6ee7b7;
+}
+
+.role-badge.family {
+  background-color: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+
+/* Main Content Area */
+.main-wrapper {
+  max-width: 1100px;
+  width: 100%;
+  margin: 1.5rem auto;
+  padding: 0 1.25rem;
+  flex: 1;
+}
+
+/* Alerts and Notices */
+.alert {
+  padding: 1rem 1.25rem;
+  border-radius: var(--radius);
+  margin-bottom: 1.25rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border: 2px solid transparent;
+}
+
+.alert-success {
+  background-color: var(--color-success-bg);
+  color: var(--color-success);
+  border-color: #6ee7b7;
+}
+
+.alert-error {
+  background-color: var(--color-danger-bg);
+  color: var(--color-danger);
+  border-color: #fca5a5;
+}
+
+.alert-info {
+  background-color: #e0f2fe;
+  color: #0369a1;
+  border-color: #7dd3fc;
+}
+
+/* Cards */
+.card {
+  background: var(--color-card-bg);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: var(--shadow);
+}
+
+.card-title {
+  font-size: 1.4rem;
+  color: var(--color-primary);
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Big Interactive Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 52px;
+  min-width: 120px;
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 700;
+  border-radius: var(--radius);
+  border: 2px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  text-align: center;
+  transition: all 0.15s ease;
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn-primary {
+  background-color: var(--color-primary);
+  color: var(--color-primary-text);
+  border-color: var(--color-primary);
+}
+
+.btn-primary:hover {
+  background-color: var(--color-primary-hover);
+}
+
+.btn-secondary {
+  background-color: #ffffff;
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+.btn-secondary:hover {
+  background-color: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+/* Giant Dose Buttons */
+.dose-btn-container {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.btn-taken {
+  background-color: var(--color-success);
+  color: #ffffff;
+  min-height: 60px;
+  flex: 1;
+  font-size: 1.15rem;
+  border: 3px solid #047857;
+}
+
+.btn-taken:hover {
+  background-color: #047857;
+}
+
+.btn-skip {
+  background-color: #475569;
+  color: #ffffff;
+  min-height: 60px;
+  flex: 1;
+  font-size: 1.15rem;
+  border: 3px solid #334155;
+}
+
+.btn-skip:hover {
+  background-color: #334155;
+}
+
+.btn-disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-sm {
+  min-height: 42px;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.9rem;
+}
+
+/* Dose Schedule Card */
+.dose-card {
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+  background-color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.dose-card.status-taken {
+  border-color: #10b981;
+  background-color: #f0fdf4;
+}
+
+.dose-card.status-skipped {
+  border-color: #94a3b8;
+  background-color: #f8fafc;
+  opacity: 0.85;
+}
+
+.dose-card.status-overdue {
+  border-color: #ef4444;
+  background-color: #fff1f2;
+}
+
+.dose-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.dose-time {
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: var(--color-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.dose-name {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.dose-dosage {
+  display: inline-block;
+  background: #e2e8f0;
+  padding: 0.2rem 0.6rem;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+/* Adherence Progress Meter */
+.adherence-container {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  margin: 1rem 0;
+  flex-wrap: wrap;
+}
+
+.adherence-score {
+  font-size: 3rem;
+  font-weight: 900;
+  color: var(--color-primary);
+  line-height: 1;
+}
+
+.adherence-bar-bg {
+  flex: 1;
+  min-width: 200px;
+  height: 28px;
+  background-color: #e2e8f0;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 2px solid var(--color-border);
+}
+
+.adherence-bar-fill {
+  height: 100%;
+  background-color: #10b981;
+  border-radius: 12px;
+  transition: width 0.4s ease;
+}
+
+/* Form Controls */
+.form-group {
+  margin-bottom: 1.5rem;
+}
+
+.form-label {
+  display: block;
+  font-weight: 700;
+  font-size: 1.1rem;
+  margin-bottom: 0.5rem;
+  color: var(--color-text);
+}
+
+.form-hint {
+  font-size: 0.95rem;
+  color: var(--color-text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.form-input, .form-textarea, .form-select {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  font-size: 1.1rem;
+  font-family: inherit;
+  border: 2px solid var(--color-border);
+  border-radius: 8px;
+  background-color: #ffffff;
+  color: var(--color-text);
+}
+
+.form-input:focus, .form-textarea:focus, .form-select:focus {
+  border-color: var(--color-primary);
+  outline: var(--focus-ring);
+  outline-offset: 1px;
+}
+
+/* Gemini Plain-Language Explainer Card */
+.ai-explainer-banner {
+  background-color: #eff6ff;
+  border: 2px solid #3b82f6;
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.disclaimer-box {
+  background-color: #fef3c7;
+  border: 2px solid #f59e0b;
+  color: #78350f;
+  border-radius: 8px;
+  padding: 1rem;
+  font-weight: 600;
+  margin-top: 1.25rem;
+  font-size: 0.95rem;
+}
+
+.explainer-section {
+  margin-bottom: 1.25rem;
+}
+
+.explainer-section h3 {
+  font-size: 1.25rem;
+  color: #1e3a8a;
+  margin-bottom: 0.4rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.explainer-section p {
+  font-size: 1.15rem;
+  line-height: 1.6;
+}
+
+/* Passcode Display Box */
+.passcode-display-card {
+  border: 3px dashed var(--color-primary);
+  background-color: #f0f7ff;
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  margin: 1.5rem 0;
+}
+
+.passcode-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #bfdbfe;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.passcode-code {
+  font-family: monospace;
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  background: #ffffff;
+  border: 2px solid #93c5fd;
+  padding: 0.3rem 0.8rem;
+  border-radius: 8px;
+  color: #1e3a8a;
+}
+
+/* Footer */
+.app-footer {
+  margin-top: auto;
+  background-color: #ffffff;
+  border-top: 2px solid var(--color-border);
+  padding: 1.5rem;
+  text-align: center;
+  font-size: 0.95rem;
+  color: var(--color-text-muted);
+}
+
+/* Responsive Grid */
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+@media (max-width: 640px) {
+  .header-container {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .nav-links {
+    justify-content: center;
+  }
+  .dose-btn-container {
+    flex-direction: column;
+  }
+}

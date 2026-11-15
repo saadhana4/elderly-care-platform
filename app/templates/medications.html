@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block title %}Medications - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem;">
+  <div>
+    <h1 style="font-size: 2rem; color: var(--color-primary); margin-bottom: 0.25rem;">
+      <span aria-hidden="true">💊</span> Medication Schedules
+    </h1>
+    <p style="font-size: 1.15rem; color: var(--color-text-muted);">
+      Prescription management for {{ current_user.elder_name }}
+    </p>
+  </div>
+
+  {% if current_user.role in ['elder', 'caretaker'] %}
+  <div>
+    <a href="/medications/new" class="btn btn-primary">
+      <span aria-hidden="true">➕</span> Add New Medication
+    </a>
+  </div>
+  {% endif %}
+</div>
+
+{% if not medications %}
+<div class="card" style="text-align: center; padding: 2.5rem 1rem;">
+  <div style="font-size: 3rem; margin-bottom: 0.5rem;" aria-hidden="true">💊</div>
+  <h2 style="font-size: 1.4rem; color: var(--color-primary); margin-bottom: 0.5rem;">No Medications Added Yet</h2>
+  <p style="font-size: 1.1rem; color: var(--color-text-muted); margin-bottom: 1.5rem;">
+    Add daily medications, dosages, and dosing times to enable automated tracking and reminders.
+  </p>
+  {% if current_user.role in ['elder', 'caretaker'] %}
+  <a href="/medications/new" class="btn btn-primary">
+    <span aria-hidden="true">➕</span> Add First Medication
+  </a>
+  {% endif %}
+</div>
+{% else %}
+<div class="grid-2">
+  {% for med in medications %}
+  <article class="card" style="margin-bottom: 0;" aria-label="Medication {{ med.name }}">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem; margin-bottom: 0.75rem;">
+      <h2 style="font-size: 1.4rem; color: var(--color-primary); margin-bottom: 0;">
+        {{ med.name }}
+      </h2>
+      <span class="dose-dosage" style="font-size: 1rem;">{{ med.dosage }}</span>
+    </div>
+
+    <div style="font-size: 1.05rem; margin-bottom: 1rem; display: flex; flex-direction: column; gap: 0.4rem;">
+      <div>
+        <strong>⏰ Schedule:</strong> {{ med.times_per_day }} time(s) daily &bull;
+        <span style="font-weight: 700; color: var(--color-primary);">{{ med.schedule_times }}</span>
+      </div>
+      <div>
+        <strong>📅 Duration:</strong> Started {{ med.start_date }}
+        {% if med.end_date %}
+          to {{ med.end_date }}
+        {% else %}
+          (Ongoing)
+        {% endif %}
+      </div>
+      {% if med.notes %}
+      <div style="color: var(--color-text-muted); background: #f8fafc; padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid var(--color-border); margin-top: 0.25rem;">
+        <strong>Instructions:</strong> {{ med.notes }}
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Gemini Plain Language Feature Link -->
+    <div style="margin-bottom: 1.25rem;">
+      <a href="/medications/{{ med.id }}/explain" class="btn btn-secondary" style="width: 100%; border-color: #38bdf8; background-color: #f0f9ff; color: #0369a1;">
+        <span aria-hidden="true">💡</span> View Plain-Language Guide
+      </a>
+    </div>
+
+    <!-- Actions for Editor Roles -->
+    {% if current_user.role in ['elder', 'caretaker'] %}
+    <div style="display: flex; gap: 0.5rem; border-top: 1px solid var(--color-border); padding-top: 0.75rem;">
+      <a href="/medications/{{ med.id }}/edit" class="btn btn-secondary btn-sm" style="flex: 1;">
+        <span aria-hidden="true">✏️</span> Edit
+      </a>
+      <form method="POST" action="/medications/{{ med.id }}/delete" data-confirm="Are you sure you want to delete {{ med.name }} from the schedule?" style="flex: 1;">
+        <button type="submit" class="btn btn-secondary btn-sm" style="width: 100%; color: var(--color-danger); border-color: #fca5a5;">
+          <span aria-hidden="true">🗑️</span> Delete
+        </button>
+      </form>
+    </div>
+    {% endif %}
+  </article>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}{{ app_name }}{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/styles.css">
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  <!-- Skip Link for Screen Reader / Keyboard Accessibility -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- Header Navigation -->
+  <header class="app-header" role="banner">
+    <div class="header-container">
+      <a href="/" class="brand" aria-label="CareNest Home">
+        <span class="brand-icon" aria-hidden="true">🌿</span>
+        <span>CareNest</span>
+      </a>
+
+      <!-- Accessibility Toolbar -->
+      <div class="accessibility-controls" aria-label="Accessibility Options">
+        <button id="toggle-text-size" class="btn btn-secondary btn-sm" type="button" aria-pressed="false" title="Toggle extra large font size">
+          <span aria-hidden="true">A+</span> Large Text
+        </button>
+        <button id="toggle-contrast" class="btn btn-secondary btn-sm" type="button" aria-pressed="false" title="Toggle high contrast black and white theme">
+          <span aria-hidden="true">👁️</span> High Contrast
+        </button>
+      </div>
+
+      <!-- Navigation Links -->
+      {% if current_user %}
+      <nav role="navigation" aria-label="Main Menu">
+        <ul class="nav-links">
+          <li>
+            <a href="/today" class="nav-link {% if request.url.path == '/today' %}active{% endif %}">
+              <span aria-hidden="true">☀️</span> Today's Doses
+            </a>
+          </li>
+          <li>
+            <a href="/medications" class="nav-link {% if '/medications' in request.url.path %}active{% endif %}">
+              <span aria-hidden="true">💊</span> Medications
+            </a>
+          </li>
+          <li>
+            <a href="/appointments" class="nav-link {% if '/appointments' in request.url.path %}active{% endif %}">
+              <span aria-hidden="true">🩺</span> Appointments
+            </a>
+          </li>
+          {% if current_user.role == 'elder' %}
+          <li>
+            <a href="/settings/access" class="nav-link {% if '/settings' in request.url.path %}active{% endif %}">
+              <span aria-hidden="true">🛡️</span> Manage Access
+            </a>
+          </li>
+          {% endif %}
+          <li>
+            <a href="/logout" class="nav-link" title="Sign out of healthcare profile">
+              <span aria-hidden="true">🚪</span> Sign Out
+            </a>
+          </li>
+        </ul>
+      </nav>
+      {% endif %}
+    </div>
+  </header>
+
+  <!-- User Status Ribbon -->
+  {% if current_user %}
+  <div class="user-ribbon" role="region" aria-label="Active Profile and Role">
+    <div class="user-ribbon-inner">
+      <div>
+        <strong>Patient Profile:</strong> {{ current_user.elder_name }}
+        <span style="margin-left: 0.5rem; color: var(--color-text-muted);">(ID: <code>{{ current_user.care_id }}</code>)</span>
+      </div>
+      <div>
+        <span>Signed in as:</span>
+        <span class="role-badge {{ current_user.role }}">
+          {% if current_user.role == 'elder' %}👑 Primary Elder{% elif current_user.role == 'caretaker' %}🤝 Caretaker{% else %}👪 Family Member (View Only){% endif %}
+        </span>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Main Content Landmark -->
+  <main id="main-content" class="main-wrapper" role="main">
+    {% if msg %}
+    <div class="alert alert-info" role="status" aria-live="polite">
+      <span>ℹ️</span> {{ msg }}
+    </div>
+    {% endif %}
+    {% if error %}
+    <div class="alert alert-error" role="alert" aria-live="assertive">
+      <span>⚠️</span> {{ error }}
+    </div>
+    {% endif %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="app-footer" role="contentinfo">
+    <p><strong>CareNest</strong> &bull; Accessible, secure & collaborative elderly healthcare management.</p>
+    <p style="margin-top: 0.25rem; font-size: 0.85rem; color: var(--color-text-muted);">
+      Designed for high-contrast accessibility &bull; Built with FastAPI &amp; Google Cloud Run
+    </p>
+  </footer>
+
+  <script src="/static/js/app.js"></script>
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>

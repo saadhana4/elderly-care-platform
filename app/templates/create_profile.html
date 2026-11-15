@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}Create Care Profile - {{ app_name }}{% endblock %}
+
+{% block content %}
+<section class="card" style="max-width: 650px; margin: 2rem auto;" aria-labelledby="create-heading">
+  <h1 id="create-heading" class="card-title" style="font-size: 1.8rem;">
+    <span aria-hidden="true">🌱</span> Create Elderly Care Profile
+  </h1>
+  <p style="font-size: 1.15rem; margin-bottom: 1.5rem; color: var(--color-text-muted);">
+    Create a unified healthcare profile. The system will automatically generate 3 separate secure passcodes for the <strong>Elder</strong>, <strong>Caretaker</strong>, and <strong>Family</strong>.
+  </p>
+
+  <form method="POST" action="/create-profile">
+    <div class="form-group">
+      <label for="elder_name" class="form-label">Elderly Person's Full Name <span style="color: var(--color-danger);">*</span></label>
+      <p class="form-hint" id="name_hint">The name of the senior whose healthcare routine is being managed.</p>
+      <input
+        type="text"
+        id="elder_name"
+        name="elder_name"
+        class="form-input"
+        placeholder="e.g. Eleanor Vance"
+        required
+        aria-describedby="name_hint"
+      >
+    </div>
+
+    <div class="form-group">
+      <label for="elder_age" class="form-label">Age (Optional)</label>
+      <input
+        type="number"
+        id="elder_age"
+        name="elder_age"
+        class="form-input"
+        placeholder="e.g. 76"
+        min="1"
+        max="125"
+      >
+    </div>
+
+    <div class="form-group">
+      <label for="emergency_notes" class="form-label">Emergency Health &amp; Allergy Notes</label>
+      <p class="form-hint" id="notes_hint">Important health conditions, allergies, or emergency directives.</p>
+      <textarea
+        id="emergency_notes"
+        name="emergency_notes"
+        class="form-textarea"
+        rows="3"
+        placeholder="e.g. Allergic to Penicillin; Pacemaker fitted 2024; Dr. Jenkins is primary cardiologist."
+        aria-describedby="notes_hint"
+      ></textarea>
+    </div>
+
+    <fieldset style="border: 2px solid var(--color-border); border-radius: 8px; padding: 1.25rem; margin-bottom: 1.5rem;">
+      <legend style="font-weight: 700; padding: 0 0.5rem; color: var(--color-primary);">
+        📬 Notification Emails for Reminders (Optional)
+      </legend>
+      <p class="form-hint" style="margin-bottom: 1rem;">
+        Emails to receive automated alerts for missed medications, upcoming doses, and appointments.
+      </p>
+
+      <div class="form-group">
+        <label for="elder_email" class="form-label">Elder's Email</label>
+        <input type="email" id="elder_email" name="elder_email" class="form-input" placeholder="eleanor@example.com">
+      </div>
+
+      <div class="form-group">
+        <label for="caretaker_email" class="form-label">Caretaker's Email</label>
+        <input type="email" id="caretaker_email" name="caretaker_email" class="form-input" placeholder="nurse.john@example.com">
+      </div>
+
+      <div class="form-group">
+        <label for="family_email" class="form-label">Family Member's Email</label>
+        <input type="email" id="family_email" name="family_email" class="form-input" placeholder="daughter.sarah@example.com">
+      </div>
+    </fieldset>
+
+    <button type="submit" class="btn btn-primary" style="width: 100%; min-height: 58px; font-size: 1.2rem;">
+      <span aria-hidden="true">✨</span> Generate Care Profile &amp; Passcodes
+    </button>
+  </form>
+
+  <div style="margin-top: 1.5rem; text-align: center;">
+    <a href="/login" class="nav-link" style="justify-content: center;">
+      &larr; Back to Sign In
+    </a>
+  </div>
+</section>
+{% endblock %}

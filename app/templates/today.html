@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+
+{% block title %}Today's Doses - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem;">
+  <div>
+    <h1 style="font-size: 2rem; color: var(--color-primary); margin-bottom: 0.25rem;">
+      <span aria-hidden="true">☀️</span> Today's Medication Routine
+    </h1>
+    <p style="font-size: 1.2rem; color: var(--color-text-muted);">
+      {{ today_date_str }} &bull; Care Profile: <strong>{{ profile.elder_name }}</strong>
+    </p>
+  </div>
+
+  {% if current_user.role in ['elder', 'caretaker'] %}
+  <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+    <a href="/medications/new" class="btn btn-secondary btn-sm">
+      <span aria-hidden="true">➕</span> Add Medication
+    </a>
+    <form method="POST" action="/tasks/send-reminders" style="display: inline;">
+      <button type="submit" class="btn btn-secondary btn-sm" title="Manually trigger email reminder scan">
+        <span aria-hidden="true">📨</span> Test Reminder Dispatch
+      </button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Adherence Score Card -->
+<section class="card" aria-labelledby="adherence-heading">
+  <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
+    <div>
+      <h2 id="adherence-heading" class="card-title" style="margin-bottom: 0.25rem;">
+        <span aria-hidden="true">📊</span> Healthcare Adherence Score
+      </h2>
+      <p style="color: var(--color-text-muted); font-size: 1.05rem;">
+        Calculated from recent scheduled doses and daily logs.
+      </p>
+    </div>
+    <div>
+      <span style="font-size: 1.1rem; font-weight: 700; color: var(--color-text-muted);">
+        Today: <strong>{{ today_taken_count }} of {{ today_total_count }}</strong> doses taken
+      </span>
+    </div>
+  </div>
+
+  <div class="adherence-container">
+    <div class="adherence-score" aria-label="Adherence percentage {{ adherence_percentage }} percent">
+      {{ adherence_percentage }}%
+    </div>
+    <div class="adherence-bar-bg" role="progressbar" aria-valuenow="{{ adherence_percentage }}" aria-valuemin="0" aria-valuemax="100" aria-label="Adherence progress">
+      <div class="adherence-bar-fill" style="width: {{ adherence_percentage }}%;"></div>
+    </div>
+  </div>
+
+  {% if adherence_percentage >= 80 %}
+  <p style="font-size: 1.1rem; font-weight: 600; color: var(--color-success);">
+    🌟 Excellent adherence! Daily medication routine is fully on track.
+  </p>
+  {% elif adherence_percentage >= 50 %}
+  <p style="font-size: 1.1rem; font-weight: 600; color: var(--color-warning);">
+    👍 Good progress! Please ensure any remaining scheduled doses are taken on time.
+  </p>
+  {% else %}
+  <p style="font-size: 1.1rem; font-weight: 600; color: var(--color-danger);">
+    🔔 Attention needed: several doses are pending or overdue. Check the list below.
+  </p>
+  {% endif %}
+</section>
+
+<!-- Today's Dose Cards -->
+<section aria-labelledby="doses-today-heading">
+  <h2 id="doses-today-heading" style="font-size: 1.5rem; color: var(--color-primary); margin-bottom: 1rem;">
+    <span aria-hidden="true">⏰</span> Scheduled Doses for Today
+  </h2>
+
+  {% if not today_doses %}
+  <div class="card" style="text-align: center; padding: 2.5rem 1rem;">
+    <div style="font-size: 3rem; margin-bottom: 0.5rem;" aria-hidden="true">🎉</div>
+    <h3 style="font-size: 1.4rem; color: var(--color-primary); margin-bottom: 0.5rem;">No Doses Scheduled for Today</h3>
+    <p style="font-size: 1.1rem; color: var(--color-text-muted); margin-bottom: 1.5rem;">
+      There are currently no active medications scheduled for today.
+    </p>
+    {% if current_user.role in ['elder', 'caretaker'] %}
+    <a href="/medications/new" class="btn btn-primary">
+      <span aria-hidden="true">➕</span> Schedule a Medication
+    </a>
+    {% endif %}
+  </div>
+  {% else %}
+    {% for dose in today_doses %}
+    <article class="dose-card status-{{ dose.status }}" aria-label="{{ dose.name }} scheduled for {{ dose.scheduled_time }}">
+      <div class="dose-header">
+        <div style="display: flex; align-items: baseline; gap: 0.75rem; flex-wrap: wrap;">
+          <span class="dose-time">
+            <span aria-hidden="true">🕒</span> {{ dose.scheduled_time }}
+          </span>
+          <span class="dose-name">{{ dose.name }}</span>
+          <span class="dose-dosage">{{ dose.dosage }}</span>
+        </div>
+
+        <div>
+          {% if dose.status == 'taken' %}
+          <span style="font-weight: 700; color: var(--color-success); font-size: 1.1rem; display: inline-flex; align-items: center; gap: 0.3rem;">
+            <span aria-hidden="true">✅</span> Taken
+            {% if dose.log and dose.log.logged_by_role %}
+              <span style="font-size: 0.85rem; font-weight: normal; color: var(--color-text-muted);">
+                (by {{ dose.log.logged_by_role }})
+              </span>
+            {% endif %}
+          </span>
+          {% elif dose.status == 'skipped' %}
+          <span style="font-weight: 700; color: #475569; font-size: 1.1rem; display: inline-flex; align-items: center; gap: 0.3rem;">
+            <span aria-hidden="true">⏭️</span> Skipped
+          </span>
+          {% elif dose.status == 'overdue' %}
+          <span style="font-weight: 700; color: var(--color-danger); font-size: 1.1rem; display: inline-flex; align-items: center; gap: 0.3rem;">
+            <span aria-hidden="true">⚠️</span> Overdue
+          </span>
+          {% else %}
+          <span style="font-weight: 700; color: var(--color-primary); font-size: 1.1rem; display: inline-flex; align-items: center; gap: 0.3rem;">
+            <span aria-hidden="true">⏳</span> Pending
+          </span>
+          {% endif %}
+        </div>
+      </div>
+
+      {% if dose.notes %}
+      <p style="font-size: 1.1rem; color: var(--color-text-muted); margin: 0.25rem 0;">
+        <strong>Instructions:</strong> {{ dose.notes }}
+      </p>
+      {% endif %}
+
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.5rem;">
+        <a href="/medications/{{ dose.medication_id }}/explain" class="nav-link" style="padding: 0.3rem 0.6rem; font-size: 0.95rem; color: #0284c7;">
+          <span aria-hidden="true">💡</span> Plain-Language Medicine Guide
+        </a>
+
+        <!-- Big Accessible Action Buttons -->
+        {% if current_user.role in ['elder', 'caretaker'] %}
+        <div class="dose-btn-container" style="margin-top: 0;">
+          <form method="POST" action="/doses/log" style="display: inline;">
+            <input type="hidden" name="medication_id" value="{{ dose.medication_id }}">
+            <input type="hidden" name="dose_date" value="{{ today_iso_date }}">
+            <input type="hidden" name="scheduled_time" value="{{ dose.scheduled_time }}">
+            <input type="hidden" name="action" value="taken">
+            <button
+              type="submit"
+              class="btn btn-taken {% if dose.status == 'taken' %}btn-disabled{% endif %}"
+              aria-label="Mark {{ dose.name }} at {{ dose.scheduled_time }} as Taken"
+            >
+              <span aria-hidden="true">✅</span> Mark Taken
+            </button>
+          </form>
+
+          <form method="POST" action="/doses/log" style="display: inline;">
+            <input type="hidden" name="medication_id" value="{{ dose.medication_id }}">
+            <input type="hidden" name="dose_date" value="{{ today_iso_date }}">
+            <input type="hidden" name="scheduled_time" value="{{ dose.scheduled_time }}">
+            <input type="hidden" name="action" value="skipped">
+            <button
+              type="submit"
+              class="btn btn-skip {% if dose.status == 'skipped' %}btn-disabled{% endif %}"
+              aria-label="Mark {{ dose.name }} at {{ dose.scheduled_time }} as Skipped"
+            >
+              <span aria-hidden="true">⏭️</span> Skip Dose
+            </button>
+          </form>
+        </div>
+        {% else %}
+        <div style="font-size: 0.95rem; color: var(--color-text-muted); font-style: italic;">
+          🔒 Viewing Mode: Only the Elder or Caretaker can mark doses.
+        </div>
+        {% endif %}
+      </div>
+    </article>
+    {% endfor %}
+  {% endif %}
+</section>
+
+<!-- Recent Adherence History -->
+<section class="card" style="margin-top: 2rem;" aria-labelledby="history-heading">
+  <h2 id="history-heading" class="card-title">
+    <span aria-hidden="true">📜</span> Recent Dose History Log
+  </h2>
+  
+  {% if not recent_history %}
+  <p style="font-size: 1.05rem; color: var(--color-text-muted);">
+    No dose actions recorded yet. Doses marked as Taken or Skipped will appear here.
+  </p>
+  {% else %}
+  <div style="overflow-x: auto;">
+    <table style="width: 100%; border-collapse: collapse; font-size: 1.05rem;" aria-label="Recent medication history table">
+      <thead>
+        <tr style="border-bottom: 2px solid var(--color-border); text-align: left;">
+          <th style="padding: 0.75rem 0.5rem;">Date</th>
+          <th style="padding: 0.75rem 0.5rem;">Time</th>
+          <th style="padding: 0.75rem 0.5rem;">Medication</th>
+          <th style="padding: 0.75rem 0.5rem;">Status</th>
+          <th style="padding: 0.75rem 0.5rem;">Logged By</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in recent_history %}
+        <tr style="border-bottom: 1px solid var(--color-border);">
+          <td style="padding: 0.75rem 0.5rem;">{{ item.dose_date }}</td>
+          <td style="padding: 0.75rem 0.5rem; font-weight: 700;">{{ item.scheduled_time }}</td>
+          <td style="padding: 0.75rem 0.5rem;">{{ item.medication.name if item.medication else 'Medication' }}</td>
+          <td style="padding: 0.75rem 0.5rem;">
+            {% if item.status == 'taken' %}
+              <span style="color: var(--color-success); font-weight: 700;">✅ Taken</span>
+            {% else %}
+              <span style="color: #475569; font-weight: 700;">⏭️ Skipped</span>
+            {% endif %}
+          </td>
+          <td style="padding: 0.75rem 0.5rem; text-transform: capitalize;">{{ item.logged_by_role }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

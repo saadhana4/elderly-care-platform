@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}Sign In - {{ app_name }}{% endblock %}
+
+{% block content %}
+<section class="card" style="max-width: 580px; margin: 2rem auto;" aria-labelledby="signin-heading">
+  <h1 id="signin-heading" class="card-title" style="font-size: 1.8rem;">
+    <span aria-hidden="true">🔐</span> Sign In to Care Profile
+  </h1>
+  <p style="font-size: 1.15rem; margin-bottom: 1.5rem; color: var(--color-text-muted);">
+    Enter your Care Profile ID and the passcode assigned to your role (Elder, Caretaker, or Family).
+  </p>
+
+  {% if success %}
+  <div class="alert alert-success" role="status">
+    <span>✅</span> {{ success }}
+  </div>
+  {% endif %}
+
+  <form method="POST" action="/login" novalidate>
+    <div class="form-group">
+      <label for="care_id" class="form-label">Care Profile ID</label>
+      <p class="form-hint" id="care_id_hint">The unique 8-character ID for your shared profile (e.g. CARE-1042).</p>
+      <input
+        type="text"
+        id="care_id"
+        name="care_id"
+        class="form-input"
+        placeholder="e.g. CARE-1042"
+        value="{{ care_id or '' }}"
+        required
+        aria-describedby="care_id_hint"
+        autocomplete="off"
+        autocapitalize="characters"
+        style="text-transform: uppercase; font-weight: bold; letter-spacing: 0.05em;"
+      >
+    </div>
+
+    <div class="form-group">
+      <label for="passcode" class="form-label">Role Passcode</label>
+      <p class="form-hint" id="passcode_hint">Your secure role passcode (e.g. ELD-7492, CAR-8319, or FAM-5021).</p>
+      <input
+        type="password"
+        id="passcode"
+        name="passcode"
+        class="form-input"
+        placeholder="Enter your passcode"
+        required
+        aria-describedby="passcode_hint"
+        autocomplete="current-password"
+        style="font-size: 1.25rem; letter-spacing: 0.1em;"
+      >
+    </div>
+
+    <button type="submit" class="btn btn-primary" style="width: 100%; min-height: 58px; font-size: 1.2rem; margin-top: 1rem;">
+      <span aria-hidden="true">🚀</span> Sign In Safely
+    </button>
+  </form>
+
+  <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 2px solid var(--color-border); text-align: center;">
+    <p style="font-size: 1.1rem; margin-bottom: 0.75rem;">Setting up care for the first time?</p>
+    <a href="/create-profile" class="btn btn-secondary" style="width: 100%;">
+      <span aria-hidden="true">➕</span> Create New Elderly Care Profile
+    </a>
+  </div>
+
+  <div style="margin-top: 1.5rem; background: #f8fafc; border: 1px solid var(--color-border); border-radius: 8px; padding: 1rem; font-size: 0.95rem; color: var(--color-text-muted);">
+    <strong>🔒 Built-in Security:</strong> Passcodes are securely salted and hashed with bcrypt. Login attempts are rate-limited to protect against unauthorized access.
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block title %}Medical Appointments - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem;">
+  <div>
+    <h1 style="font-size: 2rem; color: var(--color-primary); margin-bottom: 0.25rem;">
+      <span aria-hidden="true">🩺</span> Medical Appointments
+    </h1>
+    <p style="font-size: 1.15rem; color: var(--color-text-muted);">
+      Doctor visits and clinical consultations for {{ current_user.elder_name }}
+    </p>
+  </div>
+
+  {% if current_user.role in ['elder', 'caretaker'] %}
+  <div>
+    <a href="/appointments/new" class="btn btn-primary">
+      <span aria-hidden="true">➕</span> Schedule Appointment
+    </a>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Upcoming Appointments Section -->
+<section aria-labelledby="upcoming-appts-heading">
+  <h2 id="upcoming-appts-heading" style="font-size: 1.5rem; color: var(--color-primary); margin-bottom: 1rem;">
+    <span aria-hidden="true">📅</span> Upcoming Appointments
+  </h2>
+
+  {% if not upcoming_appts %}
+  <div class="card" style="text-align: center; padding: 2.5rem 1rem;">
+    <div style="font-size: 3rem; margin-bottom: 0.5rem;" aria-hidden="true">🩺</div>
+    <h3 style="font-size: 1.35rem; color: var(--color-primary); margin-bottom: 0.5rem;">No Upcoming Appointments</h3>
+    <p style="font-size: 1.1rem; color: var(--color-text-muted); margin-bottom: 1.5rem;">
+      There are currently no upcoming doctor visits on the schedule.
+    </p>
+    {% if current_user.role in ['elder', 'caretaker'] %}
+    <a href="/appointments/new" class="btn btn-primary">
+      <span aria-hidden="true">➕</span> Schedule Doctor Visit
+    </a>
+    {% endif %}
+  </div>
+  {% else %}
+  <div style="display: flex; flex-direction: column; gap: 1rem;">
+    {% for appt in upcoming_appts %}
+    <article class="card" style="margin-bottom: 0; border-left: 6px solid var(--color-primary);" aria-label="Appointment with {{ appt.doctor_name }}">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 0.75rem;">
+        <div>
+          <span style="display: inline-block; background-color: #dbeafe; color: #1e40af; font-weight: 700; padding: 0.2rem 0.6rem; border-radius: 6px; font-size: 0.95rem; margin-bottom: 0.4rem;">
+            📅 {{ appt.appointment_date.strftime('%A, %B %d, %Y at %I:%M %p') }}
+          </span>
+          <h3 style="font-size: 1.45rem; color: var(--color-text); margin-bottom: 0.25rem;">
+            {{ appt.doctor_name }}
+          </h3>
+          {% if appt.location %}
+          <p style="font-size: 1.1rem; color: var(--color-text-muted); display: flex; align-items: center; gap: 0.4rem;">
+            <span aria-hidden="true">📍</span> {{ appt.location }}
+          </p>
+          {% endif %}
+        </div>
+
+        {% if current_user.role in ['elder', 'caretaker'] %}
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+          <a href="/appointments/{{ appt.id }}/edit" class="btn btn-secondary btn-sm">
+            <span aria-hidden="true">✏️</span> Edit
+          </a>
+          <form method="POST" action="/appointments/{{ appt.id }}/delete" data-confirm="Are you sure you want to cancel and delete this appointment?" style="display: inline;">
+            <button type="submit" class="btn btn-secondary btn-sm" style="color: var(--color-danger); border-color: #fca5a5;">
+              <span aria-hidden="true">🗑️</span> Cancel
+            </button>
+          </form>
+        </div>
+        {% endif %}
+      </div>
+
+      {% if appt.notes %}
+      <div style="margin-top: 0.75rem; background-color: #f8fafc; border: 1px solid var(--color-border); border-radius: 6px; padding: 0.6rem 0.85rem; font-size: 1.05rem;">
+        <strong>Special Instructions:</strong> {{ appt.notes }}
+      </div>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+
+<!-- Past Appointments Section -->
+{% if past_appts %}
+<section style="margin-top: 2.5rem;" aria-labelledby="past-appts-heading">
+  <h2 id="past-appts-heading" style="font-size: 1.35rem; color: var(--color-text-muted); margin-bottom: 1rem;">
+    <span aria-hidden="true">📁</span> Past Appointments History
+  </h2>
+  <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+    {% for appt in past_appts %}
+    <div class="card" style="margin-bottom: 0; padding: 1rem 1.25rem; opacity: 0.85; background: #f8fafc;">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <div>
+          <strong>{{ appt.doctor_name }}</strong> &bull;
+          <span>{{ appt.appointment_date.strftime('%b %d, %Y at %I:%M %p') }}</span>
+          {% if appt.location %}
+          <span style="color: var(--color-text-muted);"> &bull; {{ appt.location }}</span>
+          {% endif %}
+        </div>
+        <span style="font-size: 0.85rem; color: var(--color-text-muted); font-weight: 600;">Completed</span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+{% endblock %}

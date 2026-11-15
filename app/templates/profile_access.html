@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+
+{% block title %}Access Management (Elder Control) - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 1.5rem;">
+  <h1 style="font-size: 2rem; color: var(--color-primary); margin-bottom: 0.25rem;">
+    <span aria-hidden="true">🛡️</span> Primary Elder Access Control
+  </h1>
+  <p style="font-size: 1.15rem; color: var(--color-text-muted);">
+    You have final authority over who can view or manage your healthcare profile.
+  </p>
+</div>
+
+<!-- Alert for newly generated passcode -->
+{% if new_code_role and new_code_value %}
+<div class="card" style="border: 3px solid var(--color-primary); background-color: #f0f7ff; margin-bottom: 2rem;" role="alert">
+  <div style="font-size: 1.25rem; font-weight: 700; color: var(--color-primary); margin-bottom: 0.5rem;">
+    🔑 Fresh Passcode Generated for {{ new_code_role.capitalize() }}
+  </div>
+  <p style="font-size: 1.1rem; color: var(--color-danger); font-weight: 600; margin-bottom: 0.75rem;">
+    Write down this new code immediately! The previous passcode is now permanently revoked.
+  </p>
+  <div style="display: inline-block; font-family: monospace; font-size: 2rem; font-weight: 900; background: #ffffff; border: 2px solid var(--color-primary); padding: 0.4rem 1.2rem; border-radius: 8px; color: var(--color-primary);">
+    {{ new_code_value }}
+  </div>
+</div>
+{% endif %}
+
+<!-- Care Profile Overview -->
+<section class="card" aria-labelledby="overview-heading">
+  <h2 id="overview-heading" class="card-title">
+    <span aria-hidden="true">📋</span> Profile Identification
+  </h2>
+  <div style="font-size: 1.2rem; display: flex; flex-direction: column; gap: 0.5rem;">
+    <div><strong>Elder Name:</strong> {{ profile.elder_name }}</div>
+    <div><strong>Care Profile ID:</strong> <code style="font-size: 1.3rem; background: #e2e8f0; padding: 2px 8px; border-radius: 4px;">{{ profile.care_id }}</code></div>
+  </div>
+</section>
+
+<!-- Role Permissions & Access Control -->
+<section aria-labelledby="roles-heading" style="margin-top: 2rem;">
+  <h2 id="roles-heading" style="font-size: 1.5rem; color: var(--color-primary); margin-bottom: 1rem;">
+    <span aria-hidden="true">👥</span> Authorized Members &amp; Permissions
+  </h2>
+
+  <div class="grid-2">
+    <!-- Caretaker Access Card -->
+    <article class="card" aria-label="Caretaker Access Management">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+        <h3 style="font-size: 1.35rem; color: var(--color-primary);">🤝 Caretaker Access</h3>
+        {% if profile.caretaker_access_enabled %}
+          <span style="color: var(--color-success); font-weight: 700; background: #d1fae5; padding: 0.25rem 0.6rem; border-radius: 6px; font-size: 0.9rem;">
+            ● ACTIVE
+          </span>
+        {% else %}
+          <span style="color: var(--color-danger); font-weight: 700; background: #fee2e2; padding: 0.25rem 0.6rem; border-radius: 6px; font-size: 0.9rem;">
+            ● REVOKED
+          </span>
+        {% endif %}
+      </div>
+      <p style="font-size: 1.05rem; color: var(--color-text-muted); margin-bottom: 1.25rem;">
+        Caretakers can view, add, and edit medications, log doses as Taken/Skipped, and manage appointments.
+      </p>
+
+      <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+        <form method="POST" action="/settings/access/toggle-role">
+          <input type="hidden" name="target_role" value="caretaker">
+          <input type="hidden" name="enabled" value="{{ 'false' if profile.caretaker_access_enabled else 'true' }}">
+          <button type="submit" class="btn {% if profile.caretaker_access_enabled %}btn-secondary{% else %}btn-primary{% endif %}" style="width: 100%;">
+            {% if profile.caretaker_access_enabled %}
+              <span aria-hidden="true">🚫</span> Revoke Caretaker Access
+            {% else %}
+              <span aria-hidden="true">✅</span> Re-Enable Caretaker Access
+            {% endif %}
+          </button>
+        </form>
+
+        <form method="POST" action="/settings/access/regenerate-passcode" data-confirm="Are you sure you want to generate a new Caretaker passcode? The previous code will stop working immediately.">
+          <input type="hidden" name="target_role" value="caretaker">
+          <button type="submit" class="btn btn-secondary btn-sm" style="width: 100%;">
+            <span aria-hidden="true">🔄</span> Generate Fresh Caretaker Passcode
+          </button>
+        </form>
+      </div>
+    </article>
+
+    <!-- Family Access Card -->
+    <article class="card" aria-label="Family Member Access Management">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+        <h3 style="font-size: 1.35rem; color: var(--color-primary);">👪 Family Access</h3>
+        {% if profile.family_access_enabled %}
+          <span style="color: var(--color-success); font-weight: 700; background: #d1fae5; padding: 0.25rem 0.6rem; border-radius: 6px; font-size: 0.9rem;">
+            ● ACTIVE
+          </span>
+        {% else %}
+          <span style="color: var(--color-danger); font-weight: 700; background: #fee2e2; padding: 0.25rem 0.6rem; border-radius: 6px; font-size: 0.9rem;">
+            ● REVOKED
+          </span>
+        {% endif %}
+      </div>
+      <p style="font-size: 1.05rem; color: var(--color-text-muted); margin-bottom: 1.25rem;">
+        Family members have view-only access to monitor adherence, daily progress, and receive email alert digests.
+      </p>
+
+      <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+        <form method="POST" action="/settings/access/toggle-role">
+          <input type="hidden" name="target_role" value="family">
+          <input type="hidden" name="enabled" value="{{ 'false' if profile.family_access_enabled else 'true' }}">
+          <button type="submit" class="btn {% if profile.family_access_enabled %}btn-secondary{% else %}btn-primary{% endif %}" style="width: 100%;">
+            {% if profile.family_access_enabled %}
+              <span aria-hidden="true">🚫</span> Revoke Family Access
+            {% else %}
+              <span aria-hidden="true">✅</span> Re-Enable Family Access
+            {% endif %}
+          </button>
+        </form>
+
+        <form method="POST" action="/settings/access/regenerate-passcode" data-confirm="Are you sure you want to generate a new Family passcode? The previous code will stop working immediately.">
+          <input type="hidden" name="target_role" value="family">
+          <button type="submit" class="btn btn-secondary btn-sm" style="width: 100%;">
+            <span aria-hidden="true">🔄</span> Generate Fresh Family Passcode
+          </button>
+        </form>
+      </div>
+    </article>
+  </div>
+</section>
+
+<!-- Notification Contacts & Emergency Info -->
+<section class="card" style="margin-top: 2rem;" aria-labelledby="contacts-heading">
+  <h2 id="contacts-heading" class="card-title">
+    <span aria-hidden="true">📬</span> Alert Emails &amp; Health Profile
+  </h2>
+  <p style="font-size: 1.05rem; color: var(--color-text-muted); margin-bottom: 1.5rem;">
+    Configure where automated notifications for missed doses, upcoming doses, and appointments will be sent.
+  </p>
+
+  <form method="POST" action="/settings/access/update-contacts">
+    <div class="grid-2">
+      <div class="form-group">
+        <label for="elder_email" class="form-label">Elder Email</label>
+        <input type="email" id="elder_email" name="elder_email" class="form-input" value="{{ profile.elder_email or '' }}" placeholder="eleanor@example.com">
+      </div>
+
+      <div class="form-group">
+        <label for="caretaker_email" class="form-label">Caretaker Email</label>
+        <input type="email" id="caretaker_email" name="caretaker_email" class="form-input" value="{{ profile.caretaker_email or '' }}" placeholder="nurse.john@example.com">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label for="family_email" class="form-label">Family Member Email</label>
+      <input type="email" id="family_email" name="family_email" class="form-input" value="{{ profile.family_email or '' }}" placeholder="family.sarah@example.com">
+    </div>
+
+    <div class="form-group">
+      <label for="emergency_notes" class="form-label">Emergency Health Directives &amp; Allergies</label>
+      <textarea id="emergency_notes" name="emergency_notes" class="form-textarea" rows="3">{{ profile.emergency_notes or '' }}</textarea>
+    </div>
+
+    <button type="submit" class="btn btn-primary" style="min-height: 54px;">
+      <span aria-hidden="true">💾</span> Save Contact Details &amp; Directives
+    </button>
+  </form>
+</section>
+{% endblock %}

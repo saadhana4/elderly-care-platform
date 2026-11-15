@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}{% if is_edit %}Edit {{ medication.name }}{% else %}Add New Medication{% endif %} - {{ app_name }}{% endblock %}
+
+{% block content %}
+<section class="card" style="max-width: 650px; margin: 1.5rem auto;" aria-labelledby="form-heading">
+  <h1 id="form-heading" class="card-title" style="font-size: 1.8rem;">
+    <span aria-hidden="true">💊</span> {% if is_edit %}Edit Medication Details{% else %}Add New Medication{% endif %}
+  </h1>
+  <p style="font-size: 1.15rem; color: var(--color-text-muted); margin-bottom: 1.5rem;">
+    Enter medication and schedule information for <strong>{{ current_user.elder_name }}</strong>.
+  </p>
+
+  <form method="POST" action="{% if is_edit %}/medications/{{ medication.id }}/edit{% else %}/medications/new{% endif %}">
+    <div class="form-group">
+      <label for="name" class="form-label">Medication Name <span style="color: var(--color-danger);">*</span></label>
+      <input
+        type="text"
+        id="name"
+        name="name"
+        class="form-input"
+        placeholder="e.g. Lisinopril, Metformin, Atorvastatin"
+        value="{{ medication.name if is_edit else '' }}"
+        required
+      >
+    </div>
+
+    <div class="form-group">
+      <label for="dosage" class="form-label">Dosage &amp; Strength <span style="color: var(--color-danger);">*</span></label>
+      <input
+        type="text"
+        id="dosage"
+        name="dosage"
+        class="form-input"
+        placeholder="e.g. 10 mg, 500 mg tablet, 2 drops"
+        value="{{ medication.dosage if is_edit else '' }}"
+        required
+      >
+    </div>
+
+    <div class="grid-2">
+      <div class="form-group">
+        <label for="times_per_day" class="form-label">Times Per Day <span style="color: var(--color-danger);">*</span></label>
+        <select id="times_per_day" name="times_per_day" class="form-select" required>
+          <option value="1" {% if is_edit and medication.times_per_day == 1 %}selected{% endif %}>Once a day (1x)</option>
+          <option value="2" {% if (is_edit and medication.times_per_day == 2) or (not is_edit) %}selected{% endif %}>Twice a day (2x)</option>
+          <option value="3" {% if is_edit and medication.times_per_day == 3 %}selected{% endif %}>Three times a day (3x)</option>
+          <option value="4" {% if is_edit and medication.times_per_day == 4 %}selected{% endif %}>Four times a day (4x)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="schedule_times" class="form-label">Daily Times (HH:MM) <span style="color: var(--color-danger);">*</span></label>
+        <p class="form-hint" id="schedule_hint">Comma-separated 24-hr times.</p>
+        <input
+          type="text"
+          id="schedule_times"
+          name="schedule_times"
+          class="form-input"
+          placeholder="08:00, 20:00"
+          value="{{ medication.schedule_times if is_edit else '08:00, 20:00' }}"
+          required
+          aria-describedby="schedule_hint"
+        >
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="form-group">
+        <label for="start_date" class="form-label">Start Date <span style="color: var(--color-danger);">*</span></label>
+        <input
+          type="date"
+          id="start_date"
+          name="start_date"
+          class="form-input"
+          value="{{ medication.start_date.isoformat() if is_edit else today_str }}"
+          required
+        >
+      </div>
+
+      <div class="form-group">
+        <label for="end_date" class="form-label">End Date (Optional)</label>
+        <input
+          type="date"
+          id="end_date"
+          name="end_date"
+          class="form-input"
+          value="{{ medication.end_date.isoformat() if (is_edit and medication.end_date) else '' }}"
+        >
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label for="notes" class="form-label">Doctor's Notes &amp; Instructions</label>
+      <p class="form-hint" id="notes_hint">e.g. Take with food, drink a full glass of water, avoid grapefruit.</p>
+      <textarea
+        id="notes"
+        name="notes"
+        class="form-textarea"
+        rows="3"
+        aria-describedby="notes_hint"
+      >{{ medication.notes if is_edit else '' }}</textarea>
+    </div>
+
+    <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1.5rem;">
+      <a href="/medications" class="btn btn-secondary" style="flex: 1;">
+        Cancel
+      </a>
+      <button type="submit" class="btn btn-primary" style="flex: 2; min-height: 56px;">
+        <span aria-hidden="true">💾</span> {% if is_edit %}Save Changes{% else %}Save Medication &amp; Generate AI Guide{% endif %}
+      </button>
+    </div>
+  </form>
+</section>
+{% endblock %}

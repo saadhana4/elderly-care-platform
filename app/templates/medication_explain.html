@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}Plain-Language Guide: {{ medication.name }} - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 1.5rem;">
+  <a href="/medications" class="nav-link" style="display: inline-flex; margin-bottom: 0.5rem;">
+    &larr; Back to Medications List
+  </a>
+  <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
+    <div>
+      <h1 style="font-size: 2.2rem; color: var(--color-primary); margin-bottom: 0.25rem;">
+        <span aria-hidden="true">💡</span> Simple Guide: {{ medication.name }}
+      </h1>
+      <p style="font-size: 1.2rem; color: var(--color-text-muted);">
+        Prescribed Strength: <strong>{{ medication.dosage }}</strong> &bull; Schedule: <strong>{{ medication.schedule_times }}</strong>
+      </p>
+    </div>
+
+    <div>
+      <a href="/medications/{{ medication.id }}/explain?refresh=true" class="btn btn-secondary btn-sm" title="Re-query AI to generate fresh explanation">
+        <span aria-hidden="true">🔄</span> Refresh Explanation
+      </a>
+    </div>
+  </div>
+</div>
+
+<!-- Prominent Medical Disclaimer -->
+<div class="disclaimer-box" role="note" aria-label="Medical Disclaimer">
+  <div style="display: flex; gap: 0.75rem; align-items: flex-start;">
+    <span style="font-size: 1.6rem;" aria-hidden="true">⚕️</span>
+    <div>
+      <strong>IMPORTANT MEDICAL NOTICE:</strong>
+      <p style="margin-top: 0.25rem;">
+        {{ explanation.disclaimer if explanation else 'This information is AI-generated for educational and communication purposes only. It is not medical advice, diagnosis, or clinical recommendation. Never start, stop, or change doses without consulting your doctor or pharmacist.' }}
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- Plain Language Content Cards -->
+<section style="margin-top: 1.5rem;" aria-labelledby="ai-guide-heading">
+  <h2 id="ai-guide-heading" class="sr-only" style="position: absolute; left: -9999px;">Plain-Language Details</h2>
+
+  <div class="card" style="border-left: 6px solid #2563eb;">
+    <div class="explainer-section">
+      <h3>
+        <span aria-hidden="true">🎯</span> 1. What is this medicine for?
+      </h3>
+      <p style="font-size: 1.25rem; font-weight: 500; margin-top: 0.5rem; color: #1e293b;">
+        {{ explanation.purpose if explanation else 'Prescribed by your doctor to help support your healthcare plan and manage daily symptoms.' }}
+      </p>
+    </div>
+  </div>
+
+  <div class="card" style="border-left: 6px solid #d97706;">
+    <div class="explainer-section">
+      <h3>
+        <span aria-hidden="true">👀</span> 2. Common side effects to watch for
+      </h3>
+      <p style="font-size: 1.2rem; margin-top: 0.5rem; color: #334155;">
+        {{ explanation.side_effects if explanation else 'May include mild drowsiness, dizziness, or light stomach sensitivity.' }}
+      </p>
+      <p style="font-size: 0.95rem; color: var(--color-text-muted); margin-top: 0.5rem; font-style: italic;">
+        Tip: If you experience unexpected or severe discomfort, notify your caretaker or doctor immediately.
+      </p>
+    </div>
+  </div>
+
+  <div class="card" style="border-left: 6px solid #dc2626;">
+    <div class="explainer-section">
+      <h3>
+        <span aria-hidden="true">🛑</span> 3. What to avoid &amp; safety precautions
+      </h3>
+      <p style="font-size: 1.2rem; margin-top: 0.5rem; color: #334155;">
+        {{ explanation.precautions if explanation else 'Take with plenty of water as directed. Never take a double dose to make up for a missed one.' }}
+      </p>
+    </div>
+  </div>
+
+  {% if medication.notes %}
+  <div class="card" style="border-left: 6px solid #059669;">
+    <h3 style="font-size: 1.25rem; color: var(--color-success); margin-bottom: 0.4rem;">
+      <span aria-hidden="true">📝</span> Notes From Your Doctor / Caretaker
+    </h3>
+    <p style="font-size: 1.15rem; color: var(--color-text);">
+      {{ medication.notes }}
+    </p>
+  </div>
+  {% endif %}
+</section>
+
+<div style="margin-top: 2rem; display: flex; gap: 1rem; flex-wrap: wrap;">
+  <a href="/today" class="btn btn-primary" style="flex: 1;">
+    <span aria-hidden="true">☀️</span> Return to Today's Doses
+  </a>
+  <a href="/medications" class="btn btn-secondary" style="flex: 1;">
+    <span aria-hidden="true">💊</span> View All Medications
+  </a>
+</div>
+{% endblock %}

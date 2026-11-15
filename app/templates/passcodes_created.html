@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Passcodes Created - {{ app_name }}{% endblock %}
+
+{% block content %}
+<section class="card" style="max-width: 700px; margin: 2rem auto;" aria-labelledby="created-heading">
+  <div class="alert alert-success" style="font-size: 1.2rem;">
+    <span>🎉</span> Healthcare profile for <strong>{{ profile.elder_name }}</strong> created successfully!
+  </div>
+
+  <h1 id="created-heading" class="card-title" style="font-size: 1.8rem;">
+    <span aria-hidden="true">🔑</span> Important: Save These Passcodes
+  </h1>
+  <p style="font-size: 1.15rem; color: var(--color-danger); font-weight: 700;">
+    ⚠️ Passcodes are encrypted with bcrypt and cannot be recovered in plain text once you leave this page. Please write them down or share them with your team now!
+  </p>
+
+  <div class="passcode-display-card">
+    <div style="font-size: 1.2rem; font-weight: 700; margin-bottom: 0.75rem; color: var(--color-primary);">
+      Care Profile ID: <code style="font-size: 1.4rem; background: #fff; padding: 2px 8px; border-radius: 4px;">{{ profile.care_id }}</code>
+    </div>
+    <p style="font-size: 1rem; color: var(--color-text-muted); margin-bottom: 1.25rem;">
+      (All members will enter this Care ID along with their respective role passcode.)
+    </p>
+
+    <div class="passcode-row">
+      <div>
+        <strong style="font-size: 1.2rem;">👑 Elder Passcode</strong>
+        <p style="font-size: 0.95rem; color: var(--color-text-muted);">Full control: edit records, approve or revoke member access.</p>
+      </div>
+      <div class="passcode-code">{{ elder_code }}</div>
+    </div>
+
+    <div class="passcode-row">
+      <div>
+        <strong style="font-size: 1.2rem;">🤝 Caretaker Passcode</strong>
+        <p style="font-size: 0.95rem; color: var(--color-text-muted);">Operational control: view, add, edit schedules and log doses.</p>
+      </div>
+      <div class="passcode-code">{{ caretaker_code }}</div>
+    </div>
+
+    <div class="passcode-row" style="border-bottom: none;">
+      <div>
+        <strong style="font-size: 1.2rem;">👪 Family Member Passcode</strong>
+        <p style="font-size: 0.95rem; color: var(--color-text-muted);">View-only access: monitor adherence, upcoming doses and alerts.</p>
+      </div>
+      <div class="passcode-code">{{ family_code }}</div>
+    </div>
+  </div>
+
+  <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1.5rem;">
+    <button type="button" onclick="window.print()" class="btn btn-secondary" style="flex: 1;">
+      <span aria-hidden="true">🖨️</span> Print Passcodes
+    </button>
+    <a href="/login?care_id={{ profile.care_id }}" class="btn btn-primary" style="flex: 1;">
+      <span aria-hidden="true">🚀</span> Continue to Sign In
+    </a>
+  </div>
+</section>
+{% endblock %}
