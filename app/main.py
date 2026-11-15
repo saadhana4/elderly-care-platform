@@ -86,6 +86,45 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
+def _is_untrusted_cross_origin(origin: str | None, host: str | None) -> bool:
+    """Check if origin header indicates an untrusted cross-origin request.
+
+    Args:
+        origin (Optional[str]): Incoming Origin header.
+        host (Optional[str]): Incoming Host header.
+
+    Returns:
+        bool: True if origin is untrusted cross-origin.
+    """
+    if not origin or not host:
+        return False
+    origin_host = origin.split("://")[-1].rstrip("/")
+    host_clean = host.rstrip("/")
+    is_local = (
+        origin_host.startswith("localhost")
+        or origin_host.startswith("127.0.0.1")
+        or origin_host == "testserver"
+    )
+    return origin_host != host_clean and not is_local
+
+
+def _is_invalid_submitted_token(submitted: str | None, cookie_token: str | None) -> bool:
+    """Check if explicit CSRF header token is provided but does not match cookie.
+
+    Args:
+        submitted (Optional[str]): Header token submitted by client.
+        cookie_token (Optional[str]): Token stored in client cookie.
+
+    Returns:
+        bool: True if submitted token failed validation.
+    """
+    if not submitted:
+        return False
+    if not cookie_token:
+        return True
+    return not hmac.compare_digest(submitted.strip(), cookie_token.strip())
+
+
 class CSRFProtectionMiddleware(BaseHTTPMiddleware):
     """Middleware enforcing Cross-Site Request Forgery (CSRF) protections for state changes."""
 
@@ -104,48 +143,29 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
         request.state.csrf_token = csrf_token
 
         if request.method in ("POST", "PUT", "PATCH", "DELETE"):
-            # 1. Reject explicit cross-site fetch metadata
-            sec_fetch_site = request.headers.get("sec-fetch-site")
-            if sec_fetch_site == "cross-site":
+            if request.headers.get("sec-fetch-site") == "cross-site":
                 logger.warning("CSRF blocked: cross-site fetch detected on %s", request.url.path)
                 return JSONResponse(
                     status_code=status.HTTP_403_FORBIDDEN,
                     content={"detail": "Forbidden: Cross-site request rejected."},
                 )
 
-            # 2. Verify Origin header against Host if present
-            origin = request.headers.get("origin")
-            host = request.headers.get("host")
-            if origin and host:
-                origin_host = origin.split("://")[-1].rstrip("/")
-                host_clean = host.rstrip("/")
-                is_local = (
-                    origin_host.startswith("localhost")
-                    or origin_host.startswith("127.0.0.1")
-                    or origin_host == "testserver"
+            if _is_untrusted_cross_origin(request.headers.get("origin"), request.headers.get("host")):
+                logger.warning("CSRF blocked: untrusted origin on %s", request.url.path)
+                return JSONResponse(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    content={"detail": "Forbidden: Untrusted cross-origin request rejected."},
                 )
-                if origin_host != host_clean and not is_local:
-                    logger.warning("CSRF blocked: untrusted origin '%s' on %s", origin, request.url.path)
-                    return JSONResponse(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        content={"detail": "Forbidden: Untrusted cross-origin request rejected."},
-                    )
 
-            # 3. Verify submitted X-CSRF-Token header if provided
-            submitted_token = request.headers.get(CSRF_HEADER_NAME.lower()) or request.headers.get(
-                CSRF_HEADER_NAME
-            )
-            if submitted_token:
-                if not cookie_csrf or not hmac.compare_digest(submitted_token.strip(), cookie_csrf.strip()):
-                    logger.warning("CSRF blocked: invalid token submitted on %s", request.url.path)
-                    return JSONResponse(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        content={"detail": "Forbidden: Invalid CSRF token."},
-                    )
+            hdr = request.headers.get(CSRF_HEADER_NAME.lower()) or request.headers.get(CSRF_HEADER_NAME)
+            if _is_invalid_submitted_token(hdr, cookie_csrf):
+                logger.warning("CSRF blocked: invalid token submitted on %s", request.url.path)
+                return JSONResponse(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    content={"detail": "Forbidden: Invalid CSRF token."},
+                )
 
         response: Response = await call_next(request)
-
-        # Set or refresh CSRF cookie
         if not cookie_csrf:
             response.set_cookie(
                 key=CSRF_COOKIE_NAME,
@@ -155,7 +175,6 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
                 secure=settings.ENVIRONMENT.lower() == "production",
                 max_age=86400 * 7,
             )
-
         return response
 
 

@@ -20,6 +20,28 @@ templates: Jinja2Templates = Jinja2Templates(
 )
 
 
+def _get_profile_or_404(db: Session, profile_id: int) -> Profile:
+    """Retrieve profile by ID or raise HTTP 404.
+
+    Args:
+        db (Session): Database session.
+        profile_id (int): Primary profile identifier.
+
+    Returns:
+        Profile: Matching database model instance.
+
+    Raises:
+        HTTPException: 404 if profile does not exist.
+    """
+    profile: Profile | None = db.query(Profile).filter(Profile.id == profile_id).first()
+    if not profile:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Profile not found.",
+        )
+    return profile
+
+
 @router.get("/settings/access", response_class=HTMLResponse)
 def access_settings_page(
     request: Request,
@@ -33,17 +55,16 @@ def access_settings_page(
 
     Args:
         request (Request): The incoming HTTP request.
-        current_user (Dict[str, Any]): Active elder user session.
+        current_user (dict[str, Any]): Active elder user session.
         db (Session): Database session.
-        msg (Optional[str]): Flash feedback message.
-        new_code_role (Optional[str]): Role of recently regenerated passcode if any.
-        new_code_value (Optional[str]): Plaintext value of regenerated passcode to display.
+        msg (str | None): Flash feedback message.
+        new_code_role (str | None): Role of recently regenerated passcode if any.
+        new_code_value (str | None): Plaintext value of regenerated passcode to display.
 
     Returns:
         HTMLResponse: Rendered profile_access.html.
     """
-    profile_id: int = current_user["profile_id"]
-    profile: Profile | None = db.query(Profile).filter(Profile.id == profile_id).first()
+    profile: Profile = _get_profile_or_404(db, current_user["profile_id"])
 
     return templates.TemplateResponse(
         request=request,
@@ -73,41 +94,33 @@ def toggle_role_access(
         request (Request): The incoming HTTP request.
         target_role (str): 'caretaker' or 'family'.
         enabled (str): 'true' or 'false'.
-        current_user (Dict[str, Any]): Active elder user session.
+        current_user (dict[str, Any]): Active elder user session.
         db (Session): Database session.
 
     Returns:
         RedirectResponse: 303 Redirect to /settings/access with status message.
 
     Raises:
-        HTTPException: 400 for unknown role, 404 if profile not found.
+        HTTPException: 400 for unknown role.
     """
-    profile_id: int = current_user["profile_id"]
-    profile: Profile | None = db.query(Profile).filter(Profile.id == profile_id).first()
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found.")
-
+    profile: Profile = _get_profile_or_404(db, current_user["profile_id"])
     is_active: bool = enabled.strip().lower() == "true"
     clean_target: str = target_role.strip().lower()
 
+    if clean_target not in ("caretaker", "family"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid role specified.")
+
     if clean_target == "caretaker":
         profile.caretaker_access_enabled = is_active
-        action_text: str = "enabled" if is_active else "revoked"
-        db.commit()
-        return RedirectResponse(
-            url=f"/settings/access?msg=Caretaker+access+has+been+{action_text}",
-            status_code=status.HTTP_303_SEE_OTHER,
-        )
-    elif clean_target == "family":
-        profile.family_access_enabled = is_active
-        action_text = "enabled" if is_active else "revoked"
-        db.commit()
-        return RedirectResponse(
-            url=f"/settings/access?msg=Family+access+has+been+{action_text}",
-            status_code=status.HTTP_303_SEE_OTHER,
-        )
     else:
-        raise HTTPException(status_code=400, detail="Invalid role specified.")
+        profile.family_access_enabled = is_active
+
+    action_text: str = "enabled" if is_active else "revoked"
+    db.commit()
+    return RedirectResponse(
+        url=f"/settings/access?msg={clean_target.capitalize()}+access+has+been+{action_text}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
 
 
 @router.post("/settings/access/regenerate-passcode")
@@ -122,24 +135,21 @@ def regenerate_passcode(
     Args:
         request (Request): The incoming HTTP request.
         target_role (str): 'elder', 'caretaker', or 'family'.
-        current_user (Dict[str, Any]): Active elder user session.
+        current_user (dict[str, Any]): Active elder user session.
         db (Session): Database session.
 
     Returns:
         RedirectResponse: 303 Redirect to /settings/access displaying the new plain code.
 
     Raises:
-        HTTPException: 400 for invalid role, 404 if profile not found.
+        HTTPException: 400 for invalid role.
     """
-    profile_id: int = current_user["profile_id"]
-    profile: Profile | None = db.query(Profile).filter(Profile.id == profile_id).first()
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found.")
+    profile: Profile = _get_profile_or_404(db, current_user["profile_id"])
 
     try:
         new_code: str = regenerate_role_passcode(db, profile, target_role)
     except ValueError as err:
-        raise HTTPException(status_code=400, detail=str(err))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
 
     clean_role: str = target_role.strip().lower()
     return RedirectResponse(
@@ -162,24 +172,17 @@ def update_contact_emails(
 
     Args:
         request (Request): The incoming HTTP request.
-        elder_email (Optional[str]): Elder email.
-        caretaker_email (Optional[str]): Caretaker email.
-        family_email (Optional[str]): Family email.
-        emergency_notes (Optional[str]): Medical directives notes.
-        current_user (Dict[str, Any]): Active elder user session.
+        elder_email (str | None): Elder email.
+        caretaker_email (str | None): Caretaker email.
+        family_email (str | None): Family email.
+        emergency_notes (str | None): Medical directives notes.
+        current_user (dict[str, Any]): Active elder user session.
         db (Session): Database session.
 
     Returns:
         RedirectResponse: 303 Redirect to /settings/access with status message.
-
-    Raises:
-        HTTPException: 404 if profile not found.
     """
-    profile_id: int = current_user["profile_id"]
-    profile: Profile | None = db.query(Profile).filter(Profile.id == profile_id).first()
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found.")
-
+    profile: Profile = _get_profile_or_404(db, current_user["profile_id"])
     profile.elder_email = elder_email.strip() if elder_email else None
     profile.caretaker_email = caretaker_email.strip() if caretaker_email else None
     profile.family_email = family_email.strip() if family_email else None

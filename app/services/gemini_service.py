@@ -90,23 +90,9 @@ def _get_fallback_explanation(med_name: str) -> dict[str, Any]:
     }
 
 
-def explain_medication(name: str, dosage: str = "", notes: str = "") -> dict[str, Any]:
-    """Generate a plain-language explanation of a medication using Gemini API or curated fallback.
-
-    Args:
-        name (str): Medication name.
-        dosage (str): Prescribed dosage strength.
-        notes (str): Additional doctor notes or directions.
-
-    Returns:
-        Dict[str, Any]: Structured dictionary with purpose, side effects, precautions, and disclaimer.
-    """
-    if not settings.GEMINI_API_KEY:
-        logger.info("GEMINI_API_KEY not set. Using curated healthcare fallback for %s.", name)
-        return _get_fallback_explanation(name)
-
-    prompt = f"""
-You are an empathetic, clear geriatric healthcare educator speaking directly to an elderly patient and their family.
+def _build_gemini_prompt(name: str, dosage: str, notes: str) -> str:
+    """Construct structured prompt for geriatric healthcare explanation."""
+    return f"""You are an empathetic, clear geriatric healthcare educator speaking directly to an elderly patient and their family.
 Explain the following medication in simple, calm, 6th-grade reading level language:
 
 Medication: {name}
@@ -125,32 +111,58 @@ Do NOT include markdown backticks or commentary, only raw JSON:
   "precautions": "..."
 }}
 """
+
+
+def _clean_json_markdown(raw_text: str) -> str:
+    """Strip markdown code fence syntax from LLM output."""
+    cleaned = raw_text.strip()
+    if cleaned.startswith("```json"):
+        cleaned = cleaned[7:]
+    if cleaned.startswith("```"):
+        cleaned = cleaned[3:]
+    if cleaned.endswith("```"):
+        cleaned = cleaned[:-3]
+    return cleaned.strip()
+
+
+def _query_gemini_ai(name: str, dosage: str, notes: str) -> dict[str, Any]:
+    """Execute live Gemini API call and parse structured response."""
+    from google import genai
+
+    prompt = _build_gemini_prompt(name, dosage, notes)
+    client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt,
+    )
+    cleaned_text = _clean_json_markdown(response.text)
+    parsed = json.loads(cleaned_text)
+    return {
+        "purpose": str(parsed.get("purpose", "")),
+        "side_effects": str(parsed.get("side_effects", "")),
+        "precautions": str(parsed.get("precautions", "")),
+        "disclaimer": DISCLAIMER_TEXT,
+        "source": "gemini_ai",
+    }
+
+
+def explain_medication(name: str, dosage: str = "", notes: str = "") -> dict[str, Any]:
+    """Generate a plain-language explanation of a medication using Gemini API or curated fallback.
+
+    Args:
+        name (str): Medication name.
+        dosage (str): Prescribed dosage strength.
+        notes (str): Additional doctor notes or directions.
+
+    Returns:
+        dict[str, Any]: Structured dictionary with purpose, side effects, precautions, and disclaimer.
+    """
+    if not settings.GEMINI_API_KEY:
+        logger.info("GEMINI_API_KEY not set. Using curated healthcare fallback for %s.", name)
+        return _get_fallback_explanation(name)
+
     try:
-        from google import genai
-
-        client = genai.Client(api_key=settings.GEMINI_API_KEY)
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-        )
-
-        response_text = response.text.strip()
-        if response_text.startswith("```json"):
-            response_text = response_text[7:]
-        if response_text.startswith("```"):
-            response_text = response_text[3:]
-        if response_text.endswith("```"):
-            response_text = response_text[:-3]
-        response_text = response_text.strip()
-
-        parsed = json.loads(response_text)
-        return {
-            "purpose": str(parsed.get("purpose", "")),
-            "side_effects": str(parsed.get("side_effects", "")),
-            "precautions": str(parsed.get("precautions", "")),
-            "disclaimer": DISCLAIMER_TEXT,
-            "source": "gemini_ai",
-        }
+        return _query_gemini_ai(name, dosage, notes)
     except (json.JSONDecodeError, KeyError, ImportError) as err:
         logger.warning("Error parsing Gemini AI response for %s: %s. Using fallback.", name, str(err))
         return _get_fallback_explanation(name)

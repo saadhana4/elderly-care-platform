@@ -11,6 +11,14 @@ from app.security import (
 )
 
 
+def _generate_unique_care_id(db: Session) -> str:
+    """Generate a unique care identifier not already present in the database."""
+    care_id = generate_care_id()
+    while db.query(Profile).filter(Profile.care_id == care_id).first():
+        care_id = generate_care_id()
+    return care_id
+
+
 def create_care_profile(
     db: Session,
     elder_name: str,
@@ -25,21 +33,16 @@ def create_care_profile(
     Args:
         db (Session): Database session.
         elder_name (str): Elder's full name.
-        elder_age (Optional[int]): Elder's age.
-        emergency_notes (Optional[str]): Emergency directives or allergies.
-        elder_email (Optional[str]): Elder's contact email.
-        caretaker_email (Optional[str]): Caretaker's contact email.
-        family_email (Optional[str]): Family member's contact email.
+        elder_age (int | None): Elder's age.
+        emergency_notes (str | None): Emergency directives or allergies.
+        elder_email (str | None): Elder's contact email.
+        caretaker_email (str | None): Caretaker's contact email.
+        family_email (str | None): Family member's contact email.
 
     Returns:
-        Tuple[Profile, Dict[str, str]]:
-            - profile: Created database Profile instance.
-            - passcodes: Dictionary containing plaintext passcodes for initial display.
+        tuple[Profile, dict[str, str]]: Created Profile and plaintext passcodes.
     """
-    care_id = generate_care_id()
-    while db.query(Profile).filter(Profile.care_id == care_id).first():
-        care_id = generate_care_id()
-
+    care_id = _generate_unique_care_id(db)
     elder_code = generate_passcode("elder")
     caretaker_code = generate_passcode("caretaker")
     family_code = generate_passcode("family")
@@ -70,6 +73,28 @@ def create_care_profile(
     return profile, plain_passcodes
 
 
+def _match_passcode_to_role(clean_passcode: str, profile: Profile) -> tuple[str | None, str | None]:
+    """Test candidate passcode against role hashes and active permissions.
+
+    Returns:
+        tuple[Optional[str], Optional[str]]: (matched_role, error_message).
+    """
+    if verify_passcode(clean_passcode, profile.elder_passcode_hash):
+        return "elder", None
+
+    if verify_passcode(clean_passcode, profile.caretaker_passcode_hash):
+        if not profile.caretaker_access_enabled:
+            return "caretaker", "Caretaker access has been paused or revoked by the primary elder account."
+        return "caretaker", None
+
+    if verify_passcode(clean_passcode, profile.family_passcode_hash):
+        if not profile.family_access_enabled:
+            return "family", "Family view access has been paused or revoked by the primary elder account."
+        return "family", None
+
+    return None, "Invalid Care ID or Passcode. Please verify your credentials."
+
+
 def authenticate_passcode(
     db: Session,
     care_id: str,
@@ -83,10 +108,7 @@ def authenticate_passcode(
         passcode (str): Input role passcode.
 
     Returns:
-        Tuple[Optional[Profile], Optional[str], Optional[str]]:
-            - profile: Profile instance if found, else None.
-            - role: Matched role ('elder', 'caretaker', 'family') if valid, else None.
-            - error_message: Reason string if rejected or disabled, else None.
+        tuple[Profile | None, str | None, str | None]: (profile, role, error_message).
     """
     clean_care_id = care_id.strip().upper()
     clean_passcode = passcode.strip().upper()
@@ -95,28 +117,8 @@ def authenticate_passcode(
     if not profile:
         return None, None, "Invalid Care ID or Passcode. Please verify your credentials."
 
-    if verify_passcode(clean_passcode, profile.elder_passcode_hash):
-        return profile, "elder", None
-
-    if verify_passcode(clean_passcode, profile.caretaker_passcode_hash):
-        if not profile.caretaker_access_enabled:
-            return (
-                profile,
-                "caretaker",
-                "Caretaker access has been paused or revoked by the primary elder account.",
-            )
-        return profile, "caretaker", None
-
-    if verify_passcode(clean_passcode, profile.family_passcode_hash):
-        if not profile.family_access_enabled:
-            return (
-                profile,
-                "family",
-                "Family view access has been paused or revoked by the primary elder account.",
-            )
-        return profile, "family", None
-
-    return profile, None, "Invalid Care ID or Passcode. Please verify your credentials."
+    role, err = _match_passcode_to_role(clean_passcode, profile)
+    return profile, role, err
 
 
 def regenerate_role_passcode(db: Session, profile: Profile, role: str) -> str:

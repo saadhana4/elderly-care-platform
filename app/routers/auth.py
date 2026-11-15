@@ -59,6 +59,52 @@ def login_page(
     )
 
 
+def _render_login_page(
+    request: Request,
+    error: str | None,
+    care_id: str,
+    status_code: int = status.HTTP_200_OK,
+) -> Response:
+    """Render the login template with status code and context.
+
+    Args:
+        request (Request): The incoming request.
+        error (Optional[str]): Error banner message.
+        care_id (str): Care profile ID.
+        status_code (int): HTTP status code.
+
+    Returns:
+        Response: Rendered template response.
+    """
+    return templates.TemplateResponse(
+        request=request,
+        name="login.html",
+        context={
+            "error": error,
+            "care_id": care_id,
+            "app_name": settings.APP_NAME,
+        },
+        status_code=status_code,
+    )
+
+
+def _attach_session_cookie(response: Response, token: str) -> None:
+    """Set hardened HTTP-only session cookie on outgoing response.
+
+    Args:
+        response (Response): The outgoing HTTP response.
+        token (str): Cryptographically signed HMAC session token.
+    """
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        samesite="lax",
+        secure=settings.ENVIRONMENT.lower() == "production",
+        max_age=SESSION_TOKEN_EXPIRATION_SECONDS,
+    )
+
+
 @router.post("/login", response_class=HTMLResponse)
 def login_submit(
     request: Request,
@@ -82,33 +128,16 @@ def login_submit(
 
     is_limited, retry_after = auth_rate_limiter.is_rate_limited(client_ip, clean_care_id)
     if is_limited:
-        return templates.TemplateResponse(
-            request=request,
-            name="login.html",
-            context={
-                "error": f"Too many failed attempts. For security, please wait {retry_after} seconds before trying again.",
-                "care_id": clean_care_id,
-                "app_name": settings.APP_NAME,
-            },
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        msg = (
+            f"Too many failed attempts. For security, please wait {retry_after} seconds before trying again."
         )
+        return _render_login_page(request, msg, clean_care_id, status.HTTP_429_TOO_MANY_REQUESTS)
 
     profile, role, error_msg = authenticate_passcode(db, clean_care_id, passcode)
     if error_msg:
         auth_rate_limiter.record_failure(client_ip, clean_care_id)
-        status_code = (
-            status.HTTP_403_FORBIDDEN if "paused or revoked" in error_msg else status.HTTP_401_UNAUTHORIZED
-        )
-        return templates.TemplateResponse(
-            request=request,
-            name="login.html",
-            context={
-                "error": error_msg,
-                "care_id": clean_care_id,
-                "app_name": settings.APP_NAME,
-            },
-            status_code=status_code,
-        )
+        code = status.HTTP_403_FORBIDDEN if "paused or revoked" in error_msg else status.HTTP_401_UNAUTHORIZED
+        return _render_login_page(request, error_msg, clean_care_id, code)
 
     auth_rate_limiter.record_success(client_ip, clean_care_id)
     session_token = create_session_token(
@@ -121,14 +150,7 @@ def login_submit(
     )
 
     response = RedirectResponse(url="/today", status_code=status.HTTP_303_SEE_OTHER)
-    response.set_cookie(
-        key=SESSION_COOKIE_NAME,
-        value=session_token,
-        httponly=True,
-        samesite="lax",
-        secure=settings.ENVIRONMENT.lower() == "production",
-        max_age=SESSION_TOKEN_EXPIRATION_SECONDS,
-    )
+    _attach_session_cookie(response, session_token)
     return response
 
 
@@ -153,6 +175,16 @@ def create_profile_page(
             "error": error,
             "app_name": settings.APP_NAME,
         },
+    )
+
+
+def _render_create_profile_error(request: Request, error: str) -> Response:
+    """Render profile creation form with error banner and 422 status."""
+    return templates.TemplateResponse(
+        request=request,
+        name="create_profile.html",
+        context={"error": error, "app_name": settings.APP_NAME},
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
     )
 
 
@@ -184,14 +216,8 @@ def create_profile_submit(
     """
     clean_name: str = elder_name.strip()
     if len(clean_name) < 2:
-        return templates.TemplateResponse(
-            request=request,
-            name="create_profile.html",
-            context={
-                "error": "Please enter a valid elder name (at least 2 characters).",
-                "app_name": settings.APP_NAME,
-            },
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        return _render_create_profile_error(
+            request, "Please enter a valid elder name (at least 2 characters)."
         )
 
     profile, passcodes = create_care_profile(
@@ -274,6 +300,25 @@ def api_create_profile(
     }
 
 
+def _handle_api_login_error(client_ip: str, clean_care_id: str, error_msg: str, role: str | None) -> None:
+    """Record rate limiter failure and raise HTTP error for API login.
+
+    Args:
+        client_ip (str): Remote client IP.
+        clean_care_id (str): Formatted care ID.
+        error_msg (str): Error description.
+        role (Optional[str]): Authenticated role if matched.
+
+    Raises:
+        HTTPException: 403 if revoked, 401 if invalid.
+    """
+    auth_rate_limiter.record_failure(client_ip, clean_care_id)
+    if "paused or revoked" in error_msg:
+        detail_msg = f"{role.capitalize() if role else 'Role'} access is disabled."
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail_msg)
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=error_msg)
+
+
 @router.post("/api/login")
 def api_login(
     payload: LoginRequest,
@@ -305,11 +350,7 @@ def api_login(
 
     profile, role, error_msg = authenticate_passcode(db, clean_care_id, payload.passcode)
     if error_msg:
-        auth_rate_limiter.record_failure(client_ip, clean_care_id)
-        if "paused or revoked" in error_msg:
-            detail_msg = f"{role.capitalize() if role else 'Role'} access is disabled."
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail_msg)
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=error_msg)
+        _handle_api_login_error(client_ip, clean_care_id, error_msg, role)
 
     auth_rate_limiter.record_success(client_ip, clean_care_id)
     token = create_session_token(

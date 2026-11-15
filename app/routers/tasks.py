@@ -15,6 +15,54 @@ from app.services.reminder_service import process_all_reminders
 router: APIRouter = APIRouter()
 
 
+def _extract_scheduler_token(x_scheduler_token: str | None, authorization: str | None) -> str | None:
+    """Extract raw scheduler token from either custom or bearer header.
+
+    Args:
+        x_scheduler_token (Optional[str]): Header token if set.
+        authorization (Optional[str]): Authorization header value.
+
+    Returns:
+        Optional[str]: Extracted token or None.
+    """
+    if x_scheduler_token:
+        return x_scheduler_token
+    if authorization:
+        if authorization.startswith("Bearer "):
+            return authorization.split(" ", 1)[1]
+        return authorization
+    return None
+
+
+def _authorize_task_request(request: Request, db: Session, token: str | None) -> None:
+    """Validate that caller is an authenticated editor or provided valid scheduler token.
+
+    Args:
+        request (Request): The incoming request.
+        db (Session): Database session.
+        token (Optional[str]): Extracted secret token.
+
+    Raises:
+        HTTPException: 401 if unauthorized.
+    """
+    current_user: dict[str, Any] | None = get_current_user_optional(request, db)
+    if current_user and current_user["role"] in ("elder", "caretaker"):
+        return
+
+    expected = settings.SCHEDULER_SECRET_TOKEN
+    if not token or not expected:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized: Missing or invalid scheduler token.",
+        )
+
+    if not hmac.compare_digest(token.strip(), expected.strip()):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized: Invalid scheduler secret token.",
+        )
+
+
 @router.post("/tasks/send-reminders", response_class=Response)
 def trigger_send_reminders(
     request: Request,
@@ -24,9 +72,6 @@ def trigger_send_reminders(
 ) -> Response:
     """Trigger automated email alert scan for missed doses, upcoming doses, and appointments.
 
-    Protected by secret token via X-Scheduler-Token or Authorization Bearer header.
-    Also accessible by authenticated editors (Elder or Caretaker) directly from UI.
-
     Args:
         request (Request): The incoming HTTP request.
         x_scheduler_token (Optional[str]): Secret header token.
@@ -34,33 +79,10 @@ def trigger_send_reminders(
         db (Session): Database session.
 
     Returns:
-        Union[JSONResponse, RedirectResponse]: JSON audit report or browser redirect.
-
-    Raises:
-        HTTPException: 401 if scheduler token is missing or invalid.
+        Response: JSON audit report or browser redirect.
     """
-    token: str | None = x_scheduler_token
-    if not token and authorization:
-        if authorization.startswith("Bearer "):
-            token = authorization.split(" ", 1)[1]
-        else:
-            token = authorization
-
-    current_user: dict[str, Any] | None = get_current_user_optional(request, db)
-    is_authenticated_editor: bool = bool(current_user and current_user["role"] in ("elder", "caretaker"))
-
-    if not is_authenticated_editor:
-        if not token or not settings.SCHEDULER_SECRET_TOKEN:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Unauthorized: Missing or invalid scheduler token.",
-            )
-
-        if not hmac.compare_digest(token.strip(), settings.SCHEDULER_SECRET_TOKEN.strip()):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Unauthorized: Invalid scheduler secret token.",
-            )
+    token: str | None = _extract_scheduler_token(x_scheduler_token, authorization)
+    _authorize_task_request(request, db, token)
 
     report = process_all_reminders(db)
 

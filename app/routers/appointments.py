@@ -96,6 +96,52 @@ def new_appointment_page(
     )
 
 
+def _parse_appointment_dt(dt_str: str) -> datetime:
+    """Parse ISO appointment date string or raise HTTP 400.
+
+    Args:
+        dt_str (str): Input datetime string.
+
+    Returns:
+        datetime: Validated datetime object.
+
+    Raises:
+        HTTPException: 400 if format is invalid.
+    """
+    try:
+        return datetime.fromisoformat(dt_str.strip())
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid appointment date format.",
+        )
+
+
+def _get_appointment_or_404(db: Session, profile_id: int, appt_id: int) -> Appointment:
+    """Fetch an appointment record or raise HTTP 404.
+
+    Args:
+        db (Session): Database session.
+        profile_id (int): Healthcare profile ID.
+        appt_id (int): Appointment primary ID.
+
+    Returns:
+        Appointment: Retrieved appointment instance.
+
+    Raises:
+        HTTPException: 404 if not found.
+    """
+    appt: Appointment | None = (
+        db.query(Appointment).filter(Appointment.id == appt_id, Appointment.profile_id == profile_id).first()
+    )
+    if not appt:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Appointment not found",
+        )
+    return appt
+
+
 @router.post("/appointments/new")
 def create_appointment(
     request: Request,
@@ -112,28 +158,20 @@ def create_appointment(
         request (Request): The incoming HTTP request.
         doctor_name (str): Doctor or clinic title.
         appointment_date (str): ISO formatted datetime string.
-        location (Optional[str]): Physical clinic address or room.
-        notes (Optional[str]): Preparation instructions.
-        current_user (Dict[str, Any]): Authenticated editor session.
+        location (str | None): Physical clinic address or room.
+        notes (str | None): Preparation instructions.
+        current_user (dict[str, Any]): Authenticated editor session.
         db (Session): Database session.
 
     Returns:
         RedirectResponse: 303 Redirect to /appointments with status message.
-
-    Raises:
-        HTTPException: 400 if appointment date cannot be parsed.
     """
     profile_id: int = current_user["profile_id"]
-    clean_doctor: str = doctor_name.strip()
-
-    try:
-        parsed_dt: datetime = datetime.fromisoformat(appointment_date.strip())
-    except (ValueError, TypeError):
-        raise HTTPException(status_code=400, detail="Invalid appointment date format.")
+    parsed_dt = _parse_appointment_dt(appointment_date)
 
     new_appt = Appointment(
         profile_id=profile_id,
-        doctor_name=clean_doctor,
+        doctor_name=doctor_name.strip(),
         appointment_date=parsed_dt,
         location=location.strip() if location else None,
         notes=notes.strip() if notes else None,
@@ -161,29 +199,17 @@ def edit_appointment_page(
     Args:
         appt_id (int): Appointment database ID.
         request (Request): The incoming HTTP request.
-        current_user (Dict[str, Any]): Authenticated editor session.
+        current_user (dict[str, Any]): Authenticated editor session.
         db (Session): Database session.
-        error (Optional[str]): Error message if previous update failed.
+        error (str | None): Error message if previous update failed.
 
     Returns:
         HTMLResponse: Rendered appointment_form.html.
-
-    Raises:
-        HTTPException: 404 if appointment not found.
     """
     profile_id: int = current_user["profile_id"]
-    appt: Appointment | None = (
-        db.query(Appointment)
-        .filter(
-            Appointment.id == appt_id,
-            Appointment.profile_id == profile_id,
-        )
-        .first()
-    )
-    if not appt:
-        raise HTTPException(status_code=404, detail="Appointment not found")
-
+    appt = _get_appointment_or_404(db, profile_id, appt_id)
     formatted_dt: str = appt.appointment_date.strftime("%Y-%m-%dT%H:%M")
+
     return templates.TemplateResponse(
         request=request,
         name="appointment_form.html",
@@ -201,7 +227,6 @@ def edit_appointment_page(
 @router.post("/appointments/{appt_id}/edit")
 def update_appointment(
     appt_id: int,
-    request: Request,
     doctor_name: str = Form(...),
     appointment_date: str = Form(...),
     location: str | None = Form(None),
@@ -213,36 +238,19 @@ def update_appointment(
 
     Args:
         appt_id (int): Appointment database ID.
-        request (Request): The incoming HTTP request.
         doctor_name (str): Doctor or clinic title.
         appointment_date (str): ISO formatted datetime string.
-        location (Optional[str]): Clinic location.
-        notes (Optional[str]): Notes.
-        current_user (Dict[str, Any]): Authenticated editor session.
+        location (str | None): Clinic location.
+        notes (str | None): Notes.
+        current_user (dict[str, Any]): Authenticated editor session.
         db (Session): Database session.
 
     Returns:
         RedirectResponse: 303 Redirect to /appointments with status message.
-
-    Raises:
-        HTTPException: 400 for bad date format, 404 if appointment not found.
     """
     profile_id: int = current_user["profile_id"]
-    appt: Appointment | None = (
-        db.query(Appointment)
-        .filter(
-            Appointment.id == appt_id,
-            Appointment.profile_id == profile_id,
-        )
-        .first()
-    )
-    if not appt:
-        raise HTTPException(status_code=404, detail="Appointment not found")
-
-    try:
-        parsed_dt: datetime = datetime.fromisoformat(appointment_date.strip())
-    except (ValueError, TypeError):
-        raise HTTPException(status_code=400, detail="Invalid appointment date format.")
+    appt = _get_appointment_or_404(db, profile_id, appt_id)
+    parsed_dt = _parse_appointment_dt(appointment_date)
 
     appt.doctor_name = doctor_name.strip()
     appt.appointment_date = parsed_dt
@@ -259,7 +267,6 @@ def update_appointment(
 @router.post("/appointments/{appt_id}/delete")
 def delete_appointment(
     appt_id: int,
-    request: Request,
     current_user: dict[str, Any] = Depends(require_editor),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
@@ -267,28 +274,14 @@ def delete_appointment(
 
     Args:
         appt_id (int): Appointment database ID.
-        request (Request): The incoming HTTP request.
-        current_user (Dict[str, Any]): Authenticated editor session.
+        current_user (dict[str, Any]): Authenticated editor session.
         db (Session): Database session.
 
     Returns:
         RedirectResponse: 303 Redirect to /appointments with status message.
-
-    Raises:
-        HTTPException: 404 if appointment not found.
     """
     profile_id: int = current_user["profile_id"]
-    appt: Appointment | None = (
-        db.query(Appointment)
-        .filter(
-            Appointment.id == appt_id,
-            Appointment.profile_id == profile_id,
-        )
-        .first()
-    )
-    if not appt:
-        raise HTTPException(status_code=404, detail="Appointment not found")
-
+    appt = _get_appointment_or_404(db, profile_id, appt_id)
     doc_name: str = appt.doctor_name
     db.delete(appt)
     db.commit()

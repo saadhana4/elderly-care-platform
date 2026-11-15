@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user, get_current_user_optional, require_editor
-from app.models import Medication, Profile
+from app.models import Profile
 from app.services.dose_service import (
     calculate_adherence_percentage,
     compile_today_dose_slots,
@@ -20,11 +20,75 @@ from app.services.dose_service import (
     get_recent_dose_history,
     record_dose_status,
 )
+from app.services.medication_service import get_medication_or_404
 
 router: APIRouter = APIRouter()
 templates: Jinja2Templates = Jinja2Templates(
     directory=str(Path(__file__).resolve().parent.parent / "templates")
 )
+
+
+def _build_today_context(
+    db: Session,
+    profile_id: int,
+    current_user: dict[str, Any],
+    msg: str | None,
+) -> dict[str, Any]:
+    """Compile template rendering context for the Today routine view.
+
+    Args:
+        db (Session): Database session.
+        profile_id (int): Profile primary ID.
+        current_user (dict[str, Any]): Active user session.
+        msg (Optional[str]): Flash message.
+
+    Returns:
+        dict[str, Any]: Variables for template rendering.
+    """
+    today: date = date.today()
+    profile: Profile | None = db.query(Profile).filter(Profile.id == profile_id).first()
+    active_meds = get_active_medications_for_date(db, profile_id, today)
+
+    today_logs = profile.dose_logs if profile else []
+    today_logs_filtered = [entry for entry in today_logs if entry.dose_date == today]
+
+    now_time_str: str = datetime.now().strftime("%H:%M")
+    doses, total_count, taken_count, skipped_count = compile_today_dose_slots(
+        active_meds, today_logs_filtered, now_time_str
+    )
+
+    adherence_pct: int = calculate_adherence_percentage(db, profile_id, today, taken_count, total_count)
+    recent_history = get_recent_dose_history(db, profile_id)
+
+    return {
+        "current_user": current_user,
+        "profile": profile,
+        "today_doses": doses,
+        "today_total_count": total_count,
+        "today_taken_count": taken_count,
+        "today_skipped_count": skipped_count,
+        "adherence_percentage": adherence_pct,
+        "recent_history": recent_history,
+        "today_date_str": today.strftime("%A, %B %d, %Y"),
+        "today_iso_date": today.isoformat(),
+        "msg": msg,
+        "app_name": settings.APP_NAME,
+    }
+
+
+def _parse_dose_date(dose_date_str: str) -> date:
+    """Parse dose calendar date or fallback to current day.
+
+    Args:
+        dose_date_str (str): Input date string.
+
+    Returns:
+        date: Validated calendar date.
+    """
+    try:
+        return datetime.strptime(dose_date_str.strip(), "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return date.today()
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -34,14 +98,13 @@ def index_redirect(
     """Redirect authenticated visitors to /today and unauthenticated visitors to /login.
 
     Args:
-        current_user (Optional[Dict[str, Any]]): Optional user session.
+        current_user (dict[str, Any] | None): Optional user session.
 
     Returns:
         RedirectResponse: 302 Redirect to destination.
     """
-    if current_user:
-        return RedirectResponse(url="/today", status_code=status.HTTP_302_FOUND)
-    return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
+    target = "/today" if current_user else "/login"
+    return RedirectResponse(url=target, status_code=status.HTTP_302_FOUND)
 
 
 @router.get("/today", response_class=HTMLResponse)
@@ -55,52 +118,19 @@ def today_view(
 
     Args:
         request (Request): The incoming HTTP request.
-        current_user (Dict[str, Any]): Active authenticated user session.
+        current_user (dict[str, Any]): Active authenticated user session.
         db (Session): Database session.
-        msg (Optional[str]): Flash feedback message if present.
+        msg (str | None): Flash feedback message if present.
 
     Returns:
         HTMLResponse: Rendered today.html template.
     """
-    today: date = date.today()
-    profile_id: int = current_user["profile_id"]
-    profile: Profile | None = db.query(Profile).filter(Profile.id == profile_id).first()
-
-    active_meds = get_active_medications_for_date(db, profile_id, today)
-    today_logs = profile.dose_logs if profile else []
-    today_logs_filtered = [log_entry for log_entry in today_logs if log_entry.dose_date == today]
-
-    now_time_str = datetime.now().strftime("%H:%M")
-    today_doses, today_total, today_taken, today_skipped = compile_today_dose_slots(
-        active_meds, today_logs_filtered, now_time_str
-    )
-
-    adherence_pct = calculate_adherence_percentage(db, profile_id, today, today_taken, today_total)
-    recent_history = get_recent_dose_history(db, profile_id)
-
-    return templates.TemplateResponse(
-        request=request,
-        name="today.html",
-        context={
-            "current_user": current_user,
-            "profile": profile,
-            "today_doses": today_doses,
-            "today_total_count": today_total,
-            "today_taken_count": today_taken,
-            "today_skipped_count": today_skipped,
-            "adherence_percentage": adherence_pct,
-            "recent_history": recent_history,
-            "today_date_str": today.strftime("%A, %B %d, %Y"),
-            "today_iso_date": today.isoformat(),
-            "msg": msg,
-            "app_name": settings.APP_NAME,
-        },
-    )
+    context = _build_today_context(db, current_user["profile_id"], current_user, msg)
+    return templates.TemplateResponse(request=request, name="today.html", context=context)
 
 
 @router.post("/doses/log")
 def log_dose(
-    request: Request,
     medication_id: int = Form(...),
     dose_date: str = Form(...),
     scheduled_time: str = Form(...),
@@ -111,12 +141,11 @@ def log_dose(
     """Record a medication dose as 'taken' or 'skipped' (Elder and Caretaker only).
 
     Args:
-        request (Request): The incoming HTTP request.
         medication_id (int): ID of the medication.
         dose_date (str): Calendar date string ('YYYY-MM-DD').
         scheduled_time (str): Time of the scheduled dose ('HH:MM').
         action (str): Action status ('taken' or 'skipped').
-        current_user (Dict[str, Any]): Authenticated editor session.
+        current_user (dict[str, Any]): Authenticated editor session.
         db (Session): Database session.
 
     Returns:
@@ -126,24 +155,11 @@ def log_dose(
         HTTPException: 400 for invalid action, 404 if medication not found.
     """
     if action not in ("taken", "skipped"):
-        raise HTTPException(status_code=400, detail="Invalid dose status action.")
-
-    try:
-        parsed_date = datetime.strptime(dose_date.strip(), "%Y-%m-%d").date()
-    except (ValueError, TypeError):
-        parsed_date = date.today()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid dose status action.")
 
     profile_id: int = current_user["profile_id"]
-    med: Medication | None = (
-        db.query(Medication)
-        .filter(
-            Medication.id == medication_id,
-            Medication.profile_id == profile_id,
-        )
-        .first()
-    )
-    if not med:
-        raise HTTPException(status_code=404, detail="Medication not found.")
+    med = get_medication_or_404(db, profile_id, medication_id)
+    parsed_date: date = _parse_dose_date(dose_date)
 
     record_dose_status(
         db=db,
@@ -155,8 +171,8 @@ def log_dose(
         role=current_user["role"],
     )
 
-    status_label = "taken" if action == "taken" else "skipped"
+    label: str = "taken" if action == "taken" else "skipped"
     return RedirectResponse(
-        url=f"/today?msg=Dose+for+{med.name}+marked+as+{status_label}",
+        url=f"/today?msg=Dose+for+{med.name}+marked+as+{label}",
         status_code=status.HTTP_303_SEE_OTHER,
     )

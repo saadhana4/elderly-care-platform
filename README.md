@@ -83,6 +83,7 @@ Healthapp/
 │   │   ├── dose_service.py     # Schedule expansion and adherence scoring logic
 │   │   ├── email_service.py    # SMTP delivery with safe mock logging fallback
 │   │   ├── gemini_service.py   # Gemini API integration with offline fallback & disclaimer
+│   │   ├── medication_service.py # Medication CRUD, schedule cleaning & AI explanation cache
 │   │   ├── profile_service.py  # Profile retrieval, access toggles, and passcode rotation
 │   │   └── reminder_service.py # Scanner for missed doses, upcoming doses, and appointments
 │   ├── static/
@@ -100,7 +101,7 @@ Healthapp/
 │       ├── appointments.html   # Scheduled doctor consultations
 │       ├── appointment_form.html # Add / edit doctor appointment
 │       └── profile_access.html # Elder access control panel & role guide
-├── tests/                      # 55 automated pytest tests (~91% coverage)
+├── tests/                      # 58 automated pytest tests (94.4% coverage)
 │   ├── conftest.py             # In-memory SQLite fixtures & authenticated clients
 │   ├── test_accessibility_alignment.py # WCAG 2.2 landmarks, skip link, live region, roles
 │   ├── test_appointments.py    # Doctor appointment scheduling & permissions
@@ -204,8 +205,8 @@ Healthapp/
   - Visible focus indicator outlines (`:focus-visible`) with dual offset.
 
 ### Testing
-- **Automated Pytest Suite**: **55 automated tests** across 8 test suites using an isolated in-memory SQLite database (`sqlite:///:memory:`).
-- **Test Coverage**: **91.0% overall code coverage** on `app/` measured via `pytest-cov`:
+- **Automated Pytest Suite**: **58 automated tests** across 8 test suites using an isolated in-memory SQLite database (`sqlite:///:memory:`).
+- **Test Coverage**: **94.4% overall code coverage** on `app/` (with 100% coverage on `routers/medications.py` and `services/medication_service.py`) measured via `pytest-cov`:
   - `tests/test_accessibility_alignment.py`: WCAG landmarks, skip link, live region announcer, form aria tags, speech synthesis triggers, elder sovereign banners.
   - `tests/test_security_hardened.py`: Security headers, CSRF validation, production secret checks, session cookie flags, input validation bounds, timing attack prevention.
   - `tests/test_auth.py`: Passcode generation, bcrypt verification, role login, rate limiting lockout, access revocation, passcode regeneration.
@@ -214,7 +215,7 @@ Healthapp/
   - `tests/test_appointments.py`: Doctor visit creation, modification, deletion, and permission barriers.
   - `tests/test_settings.py`: Elder access control, role disabling, and contact email updates.
   - `tests/test_reminders.py`: Scheduler token authentication, missed dose detection, upcoming dose detection, and appointment alert generation.
-- **Pass Rate**: **55 passed** (100% pass rate).
+- **Pass Rate**: **58 passed** (100% pass rate).
 
 ### Efficiency
 - **Zero Heavy JavaScript Bundles**: Server-rendered HTML via Jinja2 with minimal vanilla JS eliminates client-side hydration delays and heavy runtime overhead.

@@ -125,6 +125,94 @@ def _scan_profile_appointments(
     return formatted
 
 
+def _compose_reminder_body(
+    elder_name: str,
+    care_id: str,
+    missed_doses: list[str],
+    upcoming_doses: list[str],
+    upcoming_appointments: list[str],
+) -> str:
+    """Build formatted plain-text alert notification body.
+
+    Args:
+        elder_name (str): Elder's full name.
+        care_id (str): Profile care identifier.
+        missed_doses (list[str]): Overdue dose descriptions.
+        upcoming_doses (list[str]): Imminent dose descriptions.
+        upcoming_appointments (list[str]): Imminent appointment descriptions.
+
+    Returns:
+        str: Formatted multi-line email text.
+    """
+    lines: list[str] = [
+        "Hello,",
+        "",
+        f"Here is the latest healthcare update for {elder_name} (Care ID: {care_id}):",
+        "",
+    ]
+    if missed_doses:
+        lines.append("⚠️ MISSED / OVERDUE DOSES TODAY:")
+        for md in missed_doses:
+            lines.append(f"  • {md} - Not yet logged as taken.")
+        lines.append("")
+
+    if upcoming_doses:
+        lines.append(f"🕒 UPCOMING DOSES (NEXT {REMINDER_DOSE_FORWARD_HOURS} HOURS):")
+        for ud in upcoming_doses:
+            lines.append(f"  • {ud}")
+        lines.append("")
+
+    if upcoming_appointments:
+        lines.append(f"📅 UPCOMING MEDICAL APPOINTMENTS (NEXT {REMINDER_APPOINTMENT_FORWARD_HOURS} HOURS):")
+        for ua in upcoming_appointments:
+            lines.append(f"  • {ua}")
+        lines.append("")
+
+    lines.append("Please check the CareNest dashboard to review and log daily care routines.")
+    lines.append("CareNest - Putting elderly wellbeing at the centre of care.")
+    return "\n".join(lines)
+
+
+def _process_profile_reminders(
+    profile: Profile,
+    db: Session,
+    now: datetime,
+    today: date,
+    current_time_str: str,
+    upcoming_limit: str,
+    appointment_window: datetime,
+) -> tuple[int, int, dict[str, Any] | None]:
+    """Scan and dispatch alerts for a single care profile.
+
+    Returns:
+        tuple[int, int, Optional[dict[str, Any]]]: (alerts_count, emails_sent, audit_record).
+    """
+    recipients = _get_profile_recipients(profile)
+    if not recipients:
+        return 0, 0, None
+
+    missed, upcoming = _scan_profile_doses(profile, db, today, current_time_str, upcoming_limit)
+    appts = _scan_profile_appointments(profile, db, now, appointment_window)
+    count = len(missed) + len(upcoming) + len(appts)
+    if count == 0:
+        return 0, 0, None
+
+    subject = f"CareNest Healthcare Alert for {profile.elder_name} ({profile.care_id})"
+    body = _compose_reminder_body(profile.elder_name, profile.care_id, missed, upcoming, appts)
+    sent = send_batch_emails(recipients, subject, body)
+
+    audit = {
+        "care_id": profile.care_id,
+        "elder_name": profile.elder_name,
+        "recipients": recipients,
+        "missed_doses": missed,
+        "upcoming_doses": upcoming,
+        "upcoming_appointments": appts,
+        "emails_delivered": sent,
+    }
+    return count, sent, audit
+
+
 def process_all_reminders(db: Session) -> dict[str, Any]:
     """Scan all active profiles and dispatch email reminders for doses and appointments.
 
@@ -132,7 +220,7 @@ def process_all_reminders(db: Session) -> dict[str, Any]:
         db (Session): Database session.
 
     Returns:
-        Dict[str, Any]: Summary audit report with counts and per-profile alert details.
+        dict[str, Any]: Summary audit report with counts and per-profile alert details.
     """
     now = datetime.now()
     today = date.today()
@@ -146,65 +234,13 @@ def process_all_reminders(db: Session) -> dict[str, Any]:
     total_alerts_found = 0
 
     for profile in profiles:
-        recipients = _get_profile_recipients(profile)
-        if not recipients:
-            continue
-
-        missed_doses, upcoming_doses = _scan_profile_doses(
-            profile, db, today, current_time_str, upcoming_limit
+        count, sent, audit = _process_profile_reminders(
+            profile, db, now, today, current_time_str, upcoming_limit, appointment_window
         )
-        upcoming_appointments = _scan_profile_appointments(profile, db, now, appointment_window)
-
-        alerts_count = len(missed_doses) + len(upcoming_doses) + len(upcoming_appointments)
-        if alerts_count > 0:
-            total_alerts_found += alerts_count
-            subject = f"CareNest Healthcare Alert for {profile.elder_name} ({profile.care_id})"
-
-            body_lines = [
-                "Hello,",
-                "",
-                f"Here is the latest healthcare update for {profile.elder_name} (Care ID: {profile.care_id}):",
-                "",
-            ]
-
-            if missed_doses:
-                body_lines.append("⚠️ MISSED / OVERDUE DOSES TODAY:")
-                for md in missed_doses:
-                    body_lines.append(f"  • {md} - Not yet logged as taken.")
-                body_lines.append("")
-
-            if upcoming_doses:
-                body_lines.append(f"🕒 UPCOMING DOSES (NEXT {REMINDER_DOSE_FORWARD_HOURS} HOURS):")
-                for ud in upcoming_doses:
-                    body_lines.append(f"  • {ud}")
-                body_lines.append("")
-
-            if upcoming_appointments:
-                body_lines.append(
-                    f"📅 UPCOMING MEDICAL APPOINTMENTS (NEXT {REMINDER_APPOINTMENT_FORWARD_HOURS} HOURS):"
-                )
-                for ua in upcoming_appointments:
-                    body_lines.append(f"  • {ua}")
-                body_lines.append("")
-
-            body_lines.append("Please check the CareNest dashboard to review and log daily care routines.")
-            body_lines.append("CareNest - Putting elderly wellbeing at the centre of care.")
-
-            body_text = "\n".join(body_lines)
-            sent = send_batch_emails(recipients, subject, body_text)
+        if audit:
+            total_alerts_found += count
             total_emails_sent += sent
-
-            results.append(
-                {
-                    "care_id": profile.care_id,
-                    "elder_name": profile.elder_name,
-                    "recipients": recipients,
-                    "missed_doses": missed_doses,
-                    "upcoming_doses": upcoming_doses,
-                    "upcoming_appointments": upcoming_appointments,
-                    "emails_delivered": sent,
-                }
-            )
+            results.append(audit)
 
     return {
         "timestamp": now.isoformat(),

@@ -35,6 +35,19 @@ def get_active_medications_for_date(db: Session, profile_id: int, target_date: d
     return [m for m in candidates if m.end_date is None or m.end_date >= target_date]
 
 
+def _resolve_slot_status(slot_time: str, current_time: str, log: DoseLog | None) -> tuple[str, int, int]:
+    """Determine dose slot status and count increment."""
+    if log:
+        if log.status == "taken":
+            return log.status, 1, 0
+        if log.status == "skipped":
+            return log.status, 0, 1
+        return log.status, 0, 0
+    if slot_time < current_time:
+        return "overdue", 0, 0
+    return "pending", 0, 0
+
+
 def compile_today_dose_slots(
     active_meds: list[Medication],
     today_logs: list[DoseLog],
@@ -43,41 +56,32 @@ def compile_today_dose_slots(
     """Compile scheduled dose slots for today and compute today's counts.
 
     Args:
-        active_meds (List[Medication]): Active medications for today.
-        today_logs (List[DoseLog]): Existing dose logs recorded for today.
+        active_meds (list[Medication]): Active medications for today.
+        today_logs (list[DoseLog]): Existing dose logs recorded for today.
         current_time_str (str): Current time in 'HH:MM' format.
 
     Returns:
-        Tuple[List[Dict[str, Any]], int, int, int]:
+        tuple[list[dict[str, Any]], int, int, int]:
             - today_doses: Sorted list of dose slot dictionaries.
             - total_count: Total scheduled doses today.
             - taken_count: Doses marked as taken today.
             - skipped_count: Doses marked as skipped today.
     """
     logs_map: dict[tuple[int, str], DoseLog] = {
-        (log_entry.medication_id, log_entry.scheduled_time): log_entry for log_entry in today_logs
+        (entry.medication_id, entry.scheduled_time): entry for entry in today_logs
     }
 
     today_doses: list[dict[str, Any]] = []
-    total_count = 0
-    taken_count = 0
-    skipped_count = 0
+    total_count = taken_count = skipped_count = 0
 
     for med in active_meds:
         times = [t.strip() for t in med.schedule_times.split(",") if t.strip()]
         for t in times:
             total_count += 1
             log = logs_map.get((med.id, t))
-            dose_status = "pending"
-
-            if log:
-                dose_status = log.status
-                if log.status == "taken":
-                    taken_count += 1
-                elif log.status == "skipped":
-                    skipped_count += 1
-            elif t < current_time_str:
-                dose_status = "overdue"
+            dose_status, t_inc, s_inc = _resolve_slot_status(t, current_time_str, log)
+            taken_count += t_inc
+            skipped_count += s_inc
 
             today_doses.append(
                 {
@@ -134,6 +138,26 @@ def calculate_adherence_percentage(
     return ADHERENCE_DEFAULT_PERCENTAGE
 
 
+def _find_existing_dose_log(
+    db: Session,
+    profile_id: int,
+    medication_id: int,
+    dose_date: date,
+    clean_time: str,
+) -> DoseLog | None:
+    """Query existing dose log entry by composite keys."""
+    return (
+        db.query(DoseLog)
+        .filter(
+            DoseLog.profile_id == profile_id,
+            DoseLog.medication_id == medication_id,
+            DoseLog.dose_date == dose_date,
+            DoseLog.scheduled_time == clean_time,
+        )
+        .first()
+    )
+
+
 def record_dose_status(
     db: Session,
     profile_id: int,
@@ -157,25 +181,16 @@ def record_dose_status(
     Returns:
         DoseLog: The created or updated DoseLog database record.
     """
-    clean_time = scheduled_time.strip()
-    existing_log: DoseLog | None = (
-        db.query(DoseLog)
-        .filter(
-            DoseLog.profile_id == profile_id,
-            DoseLog.medication_id == medication_id,
-            DoseLog.dose_date == dose_date,
-            DoseLog.scheduled_time == clean_time,
-        )
-        .first()
-    )
-
+    clean_time: str = scheduled_time.strip()
+    existing: DoseLog | None = _find_existing_dose_log(db, profile_id, medication_id, dose_date, clean_time)
     now_utc = datetime.now(UTC)
-    if existing_log:
-        existing_log.status = action
-        existing_log.logged_at = now_utc
-        existing_log.logged_by_role = role
+
+    if existing:
+        existing.status = action
+        existing.logged_at = now_utc
+        existing.logged_by_role = role
         db.commit()
-        return existing_log
+        return existing
 
     new_log = DoseLog(
         profile_id=profile_id,

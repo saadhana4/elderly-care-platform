@@ -113,9 +113,7 @@ def test_login_and_create_profile_form_accessibility(client: TestClient) -> None
     assert len(h1_create) == 1
 
 
-def test_today_view_accessibility_and_problem_alignment(
-    client: TestClient, db_session: Session
-) -> None:
+def test_today_view_accessibility_and_problem_alignment(client: TestClient, db_session: Session) -> None:
     """Verifies read aloud button, table captions/scope, and elder-centred design banners."""
     _create_sample_profile(db_session)
 
