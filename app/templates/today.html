@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Today's Doses - {{ app_name }}{% endblock %}
+{% block title %}Today's Medication Routine - {{ app_name }}{% endblock %}
 
 {% block content %}
 <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem;">
@@ -13,8 +13,13 @@
     </p>
   </div>
 
-  {% if current_user.role in ['elder', 'caretaker'] %}
-  <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+  <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;">
+    <!-- Read Aloud Button for Senior Accessibility (WCAG / Web Speech API) -->
+    <button id="btn-read-aloud" class="btn btn-secondary btn-sm" type="button" aria-label="Read today's medication routine aloud">
+      <span aria-hidden="true">🔊</span> Read Aloud
+    </button>
+
+    {% if current_user.role in ['elder', 'caretaker'] %}
     <a href="/medications/new" class="btn btn-secondary btn-sm">
       <span aria-hidden="true">➕</span> Add Medication
     </a>
@@ -23,9 +28,23 @@
         <span aria-hidden="true">📨</span> Test Reminder Dispatch
       </button>
     </form>
+    {% endif %}
   </div>
-  {% endif %}
 </div>
+
+<!-- Problem Alignment: Elder-Centred Collaborative Healthcare Banner -->
+<section class="card" style="background: #f0fdf4; border: 1px solid #bbf7d0; margin-bottom: 1.5rem;" aria-label="Collaborative care information">
+  <div style="display: flex; gap: 0.75rem; align-items: flex-start;">
+    <span style="font-size: 1.5rem;" aria-hidden="true">🤝</span>
+    <div>
+      <h2 style="font-size: 1.15rem; color: #166534; margin-bottom: 0.25rem;">Elder-Centred Care Circle</h2>
+      <p style="font-size: 0.95rem; color: #15803d; margin: 0;">
+        <strong>Elder Sovereign Control:</strong> {{ profile.elder_name }} holds final authority over all access permissions and health decisions. 
+        <strong>Care Circle:</strong> Caretakers can log doses and appointments. Family members monitor adherence and receive proactive email alerts for missed doses and upcoming appointments.
+      </p>
+    </div>
+  </div>
+</section>
 
 <!-- Adherence Score Card -->
 <section class="card" aria-labelledby="adherence-heading">
@@ -192,13 +211,14 @@
   {% else %}
   <div style="overflow-x: auto;">
     <table style="width: 100%; border-collapse: collapse; font-size: 1.05rem;" aria-label="Recent medication history table">
+      <caption class="sr-only">Recent Medication Dose Logs</caption>
       <thead>
         <tr style="border-bottom: 2px solid var(--color-border); text-align: left;">
-          <th style="padding: 0.75rem 0.5rem;">Date</th>
-          <th style="padding: 0.75rem 0.5rem;">Time</th>
-          <th style="padding: 0.75rem 0.5rem;">Medication</th>
-          <th style="padding: 0.75rem 0.5rem;">Status</th>
-          <th style="padding: 0.75rem 0.5rem;">Logged By</th>
+          <th scope="col" style="padding: 0.75rem 0.5rem;">Date</th>
+          <th scope="col" style="padding: 0.75rem 0.5rem;">Time</th>
+          <th scope="col" style="padding: 0.75rem 0.5rem;">Medication</th>
+          <th scope="col" style="padding: 0.75rem 0.5rem;">Status</th>
+          <th scope="col" style="padding: 0.75rem 0.5rem;">Logged By</th>
         </tr>
       </thead>
       <tbody>

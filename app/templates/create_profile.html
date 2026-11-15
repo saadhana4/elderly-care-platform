@@ -13,7 +13,7 @@
 
   <form method="POST" action="/create-profile">
     <div class="form-group">
-      <label for="elder_name" class="form-label">Elderly Person's Full Name <span style="color: var(--color-danger);">*</span></label>
+      <label for="elder_name" class="form-label">Elderly Person's Full Name <span style="color: var(--color-danger);" aria-hidden="true">*</span></label>
       <p class="form-hint" id="name_hint">The name of the senior whose healthcare routine is being managed.</p>
       <input
         type="text"
@@ -22,6 +22,7 @@
         class="form-input"
         placeholder="e.g. Eleanor Vance"
         required
+        aria-required="true"
         aria-describedby="name_hint"
       >
     </div>

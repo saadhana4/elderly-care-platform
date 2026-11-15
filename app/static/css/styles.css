@@ -43,12 +43,25 @@
   --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
 }
 
+/* Screen Reader Only Utility */
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border-width: 0 !important;
+}
+
 /* Extra Large Text Mode */
 body.text-large {
   --font-base: 22px;
 }
 
-/* High Contrast Theme */
+/* High Contrast Theme (WCAG AAA >= 7:1) */
 body.high-contrast {
   --color-bg: #ffffff;
   --color-card-bg: #ffffff;
@@ -62,6 +75,34 @@ body.high-contrast {
   --color-warning: #804000;
   --color-danger: #8a0000;
   --focus-ring: 4px solid #000000;
+}
+
+/* System Preference: High Contrast Support */
+@media (prefers-contrast: more) {
+  :root {
+    --color-bg: #ffffff;
+    --color-card-bg: #ffffff;
+    --color-text: #000000;
+    --color-text-muted: #000000;
+    --color-border: #000000;
+    --color-primary: #000000;
+    --color-primary-hover: #222222;
+    --color-primary-text: #ffff00;
+    --color-success: #004d00;
+    --color-warning: #663300;
+    --color-danger: #7a0000;
+    --focus-ring: 4px solid #000000;
+  }
+}
+
+/* System Preference: Reduced Motion Support */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Reset & Box Sizing */
@@ -106,10 +147,17 @@ body {
   outline: var(--focus-ring);
 }
 
-/* Accessible Focus Indicators */
+/* Accessible Focus Indicators (WCAG 2.4.7 & 2.4.13) */
 :focus-visible {
   outline: var(--focus-ring);
   outline-offset: var(--focus-offset);
+  box-shadow: 0 0 0 4px rgba(30, 58, 138, 0.35);
+}
+
+body.high-contrast :focus-visible {
+  outline: 4px solid #000000;
+  outline-offset: 4px;
+  box-shadow: 0 0 0 6px #ffff00;
 }
 
 /* Navigation Header */
@@ -163,6 +211,8 @@ body {
   color: var(--color-text);
   font-weight: 600;
   padding: 0.6rem 1rem;
+  min-height: 44px;
+  min-width: 44px;
   border-radius: 8px;
   border: 2px solid transparent;
   transition: all 0.15s ease;
@@ -369,9 +419,10 @@ body {
 }
 
 .btn-sm {
-  min-height: 42px;
-  padding: 0.4rem 0.9rem;
-  font-size: 0.9rem;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0.5rem 1rem;
+  font-size: 0.95rem;
 }
 
 /* Dose Schedule Card */

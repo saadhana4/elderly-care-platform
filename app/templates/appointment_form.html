@@ -13,7 +13,7 @@
 
   <form method="POST" action="{% if is_edit %}/appointments/{{ appointment.id }}/edit{% else %}/appointments/new{% endif %}">
     <div class="form-group">
-      <label for="doctor_name" class="form-label">Doctor / Clinic Name <span style="color: var(--color-danger);">*</span></label>
+      <label for="doctor_name" class="form-label">Doctor / Clinic Name <span style="color: var(--color-danger);" aria-hidden="true">*</span></label>
       <input
         type="text"
         id="doctor_name"
@@ -22,11 +22,12 @@
         placeholder="e.g. Dr. Sarah Jenkins (Cardiology), Dr. Patel (General Practice)"
         value="{{ appointment.doctor_name if is_edit else '' }}"
         required
+        aria-required="true"
       >
     </div>
 
     <div class="form-group">
-      <label for="appointment_date" class="form-label">Date and Time <span style="color: var(--color-danger);">*</span></label>
+      <label for="appointment_date" class="form-label">Date and Time <span style="color: var(--color-danger);" aria-hidden="true">*</span></label>
       <input
         type="datetime-local"
         id="appointment_date"
@@ -34,6 +35,7 @@
         class="form-input"
         value="{{ default_datetime }}"
         required
+        aria-required="true"
       >
     </div>
 

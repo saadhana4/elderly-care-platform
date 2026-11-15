@@ -12,6 +12,24 @@
   </p>
 </div>
 
+<!-- Plain Language Role & Passcode Guidance -->
+<section class="card" style="background: #f8fafc; border: 1px solid var(--color-border); margin-bottom: 2rem;" aria-labelledby="passcode-guide-heading">
+  <h2 id="passcode-guide-heading" class="card-title" style="font-size: 1.25rem; color: var(--color-primary); margin-bottom: 0.5rem;">
+    <span aria-hidden="true">💡</span> Why Role Passcodes Instead of Passwords?
+  </h2>
+  <p style="font-size: 1.05rem; color: var(--color-text-muted); margin-bottom: 1rem;">
+    CareNest removes the barrier of complex usernames and passwords. Everyone in your care circle shares one Care Profile ID (<strong>{{ profile.care_id }}</strong>), but signs in with a role-specific passcode:
+  </p>
+  <ul style="font-size: 1.05rem; line-height: 1.7; padding-left: 1.25rem; margin-bottom: 1rem;">
+    <li><strong>Elder (You):</strong> Sovereign decision-maker. You can edit all medications, appointments, and revoke or regenerate access at any time.</li>
+    <li><strong>Caretaker:</strong> Day-to-day healthcare assistant. Can add and edit medications, log doses as taken, and coordinate appointments.</li>
+    <li><strong>Family:</strong> Monitoring and peace of mind. View-only access to adherence scores and receives automated email alerts for missed doses.</li>
+  </ul>
+  <p style="font-size: 0.95rem; color: var(--color-text-muted); margin: 0;">
+    🔒 <em>Security Note:</em> All passcodes are salted and hashed with bcrypt. They can be rotated instantly below if someone leaves your care team.
+  </p>
+</section>
+
 <!-- Alert for newly generated passcode -->
 {% if new_code_role and new_code_value %}
 <div class="card" style="border: 3px solid var(--color-primary); background-color: #f0f7ff; margin-bottom: 2rem;" role="alert">

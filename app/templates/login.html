@@ -29,6 +29,7 @@
         placeholder="e.g. CARE-1042"
         value="{{ care_id or '' }}"
         required
+        aria-required="true"
         aria-describedby="care_id_hint"
         autocomplete="off"
         autocapitalize="characters"
@@ -46,6 +47,7 @@
         class="form-input"
         placeholder="Enter your passcode"
         required
+        aria-required="true"
         aria-describedby="passcode_hint"
         autocomplete="current-password"
         style="font-size: 1.25rem; letter-spacing: 0.1em;"
